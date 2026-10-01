@@ -1,0 +1,17 @@
+{
+  "name": "xspace-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --minify --format=esm --outfile=dist/app.js",
+    "test": "node verification/dom-test.cjs && node supabase/verify.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.57.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "esbuild": "0.25.10",
+    "jsdom": "^26.1.0"
+  }
+}

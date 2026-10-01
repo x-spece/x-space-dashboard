@@ -1,0 +1,18 @@
+const fs=require('fs'),vm=require('vm'),{JSDOM}=require('jsdom');
+const dom=new JSDOM(fs.readFileSync('dist/index.html','utf8'),{url:'https://example.test',runScripts:'outside-only'}),w=dom.window;
+w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+w.createClient=()=>({auth:{onAuthStateChange(){},getSession:async()=>({data:{session:null}})},rpc:async()=>({data:true})});
+let s=fs.readFileSync('src/app.js','utf8').replace("import {createClient} from '@supabase/supabase-js';",'').replace(/start\(\);\s*$/,'');
+vm.runInContext(s,dom.getInternalVMContext());
+const run=s=>vm.runInContext(s,dom.getInternalVMContext());let count=0;
+function test(ok,msg){if(!ok)throw new Error(msg);console.log('PASS '+msg);count++}
+run('login()');test(w.document.querySelector('#login-form'),'login form rendered');run("preview=true;data={};render()");
+for(const route of ['home','orders','products','categories','merchants','finance','support','exchange','notifications','settings','audit']){run(`route='${route}';render()`);test(w.document.querySelector('#page').innerHTML.length>40,'empty route '+route)}
+run(`data={x_profiles:[{user_id:'merchant',phone:'07736578905',data:{name:'كرار',pageName:'أكس',province:'بغداد',area:'القاهرة'}}],x_orders:[{id:'test-order',merchant_id:'merchant',status:'معلق',created_at:'2026-10-01T00:00:00Z',payload:{customer:{name:'<img src=x onerror=alert(1)>',phone:'07736578905',province:'بغداد',address:'القاهرة'},sales:20000,delivery:5000,profit:10000,items:[{name:'منتج',quantity:1,sale:20000,unitCost:10000}]}}],x_withdrawals:[],x_products:[{id:'p',stock:5,active:true,sort_order:0,data:{name:'منتج',baseCost:10000,categories:[]}}]};preview=false;user={id:'owner'};allowed=true;route='orders';search='test-order';filter='';render();`);
+test(w.document.querySelectorAll('tbody tr').length===1,'search finds real order fixture');test(!w.document.querySelector('td img'),'customer text escaped');
+run("filter='تم التوصيل';page()");test(w.document.querySelectorAll('tbody tr').length===0,'status filter excludes pending');
+run("filter='';orderDetail('test-order')");test(w.document.querySelector('#new-status'),'order status control present');test(w.document.querySelector('#dialog-content').textContent.includes('منتج'),'historical line item shown');
+run("dialog.close();productForm('p')");test(w.document.querySelector('#f-stock').value==='5','product stock editor initialized');test(w.document.querySelector('#f-baseCost').value==='10000','wholesale editor initialized');
+run("dialog.close();merchantDetail('merchant')");test(w.document.querySelector('#dialog-content').textContent.includes('07736578905'),'merchant details render');
+run("dialog.close();route='finance';render()");test(w.document.querySelector('#page').textContent.includes('أرصدة التجار'),'merchant balances section present');
+console.log(count+' DOM checks passed (mock data, no live writes)');w.close();
