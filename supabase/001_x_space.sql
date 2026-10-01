@@ -116,7 +116,7 @@ create or replace function x_private.reserve(p_items jsonb,p_free boolean) retur
  qty:=(item->>'quantity')::integer; sale:=(item->>'sale')::bigint; cost:=x_private.price(p);
  if cost is null or cost<0 then raise exception 'سعر المنتج غير مضبوط؛ تواصل مع الإدارة'; end if;
  if qty is null or qty<1 or qty>1000 or qty>p.stock then raise exception 'الكمية غير متوفرة'; end if;
- if sale is null or sale<cost or sale>coalesce((p.data->>'sellingLimit')::bigint,cost+15000) then raise exception 'سعر البيع خارج الحدود'; end if;
+ if (p.data->>'minimumSale') is null or (p.data->>'minimumSale')::bigint<cost or sale is null or sale<(p.data->>'minimumSale')::bigint or sale>coalesce((p.data->>'sellingLimit')::bigint,cost+15000) then raise exception 'سعر البيع خارج الحدود'; end if;
  if jsonb_array_length(coalesce(p.data->'colors','[]')-'قياسي'-'')>0 and not (p.data->'colors' ? coalesce(item->>'color','')) then raise exception 'اللون غير متوفر'; end if;
  if jsonb_array_length(coalesce(p.data->'sizes','[]'))>0 and not (p.data->'sizes' ? coalesce(item->>'size','')) then raise exception 'القياس غير متوفر'; end if;
  update public.x_products set stock=stock-qty where id=p.id;
@@ -244,7 +244,7 @@ end$$;
 create or replace function public.x_create_landing(p_id text,p_product text,p_sale bigint,p_free boolean) returns void language plpgsql security definer set search_path='' as $$declare u uuid:=x_private.member(); p public.x_products; cost bigint; min_profit bigint; begin
  select * into p from public.x_products where id=p_product and active; if not found then raise exception 'المنتج غير موجود'; end if;
  cost:=x_private.price(p); select coalesce((data->>'freeDeliveryMinimumProfit')::bigint,7000) into min_profit from public.x_settings where id;
- if p_sale<cost or p_sale>coalesce((p.data->>'sellingLimit')::bigint,cost+15000) or (p_free and p_sale-cost<min_profit) then raise exception 'راجع سعر البيع'; end if;
+ if (p.data->>'minimumSale') is null or (p.data->>'minimumSale')::bigint<cost or p_sale is null or p_sale<(p.data->>'minimumSale')::bigint or p_sale>coalesce((p.data->>'sellingLimit')::bigint,cost+15000) or (p_free and p_sale-cost<min_profit) then raise exception 'راجع سعر البيع'; end if;
  insert into public.x_landing_pages(id,merchant_id,product_id,sale,free_delivery) values(p_id,u,p_product,p_sale,p_free) on conflict(id) do nothing;
 end$$;
 create or replace function public.x_public_landing(p_id text) returns jsonb language plpgsql stable security definer set search_path='' as $$declare p public.x_landing_pages; prod public.x_products; begin
