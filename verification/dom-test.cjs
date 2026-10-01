@@ -1,6 +1,7 @@
 const fs=require('fs'),vm=require('vm'),{JSDOM}=require('jsdom');
 const dom=new JSDOM(fs.readFileSync('dist/index.html','utf8'),{url:'https://example.test',runScripts:'outside-only'}),w=dom.window;
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+w.matchMedia=()=>({matches:true,addEventListener(){}});w.scrollTo=(x,y)=>{w.scrollY=y};
 w.createClient=()=>({auth:{onAuthStateChange(){},getSession:async()=>({data:{session:null}})},rpc:async()=>({data:true})});
 let s=fs.readFileSync('src/app.js','utf8').replace("import {createClient} from '@supabase/supabase-js';",'').replace(/start\(\);\s*$/,'');
 vm.runInContext(s,dom.getInternalVMContext());
@@ -15,4 +16,8 @@ run("filter='';orderDetail('test-order')");test(w.document.querySelector('#new-s
 run("dialog.close();productForm('p')");test(w.document.querySelector('#f-stock').value==='5','product stock editor initialized');test(w.document.querySelector('#f-baseCost').value==='10000','wholesale editor initialized');
 run("dialog.close();merchantDetail('merchant')");test(w.document.querySelector('#dialog-content').textContent.includes('07736578905'),'merchant details render');
 run("dialog.close();route='finance';render()");test(w.document.querySelector('#page').textContent.includes('أرصدة التجار'),'merchant balances section present');
-console.log(count+' DOM checks passed (mock data, no live writes)');w.close();
+console.log(count+' DOM checks passed (mock data, no live writes)');
+
+run("route='home';render();");w.scrollY=320;run('setMenu(true)');test(w.document.body.classList.contains('menu-open'),'menu locks background');test(w.document.body.style.top==='-320px','menu preserves scroll offset');test(!w.document.querySelector('.sidebar').inert,'open menu accepts controls');w.document.querySelector('[data-action=menu-close]').click();test(!w.document.body.classList.contains('menu-open')&&w.scrollY===320,'backdrop closes and restores position');run('setMenu(true)');w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));test(!w.document.body.classList.contains('menu-open'),'escape closes navigation');run('setMenu(true)');w.document.querySelector('[data-route=orders]').click();test(!w.document.body.classList.contains('menu-open')&&w.document.querySelector('.sidebar').inert,'route navigation unlocks background and hides menu');
+
+w.close();
