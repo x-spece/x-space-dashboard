@@ -12,3 +12,8 @@
 
 
 .banner-thumb{display:block;width:128px;aspect-ratio:16/9;object-fit:contain;background:#f0faff;border-radius:8px}.banner-preview{width:100%;aspect-ratio:16/9;background:#f0faff;border-radius:14px;overflow:hidden;margin-bottom:16px}.banner-preview img{width:100%;height:100%;object-fit:contain}.banner-preview img[hidden]{display:none}[hidden]{display:none!important}
+
+/* Keep long presses on dashboard content from opening selection/search menus. */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+img{-webkit-user-drag:none}
