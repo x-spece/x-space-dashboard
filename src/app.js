@@ -129,7 +129,7 @@ function addSize(value=''){const row=document.createElement('div');row.className
 for(const size of d.sizes||[])addSize(size);$('#add-size').onclick=()=>addSize().focus();
 const total=document.createElement('div');total.className='field product-total';total.innerHTML='<label for="f-appTotal">سعر البيع + ربح التطبيق</label><input id="f-appTotal" type="number" min="0" step="1" required value="'+esc(d.baseCost??0)+'"><span class="currency">د.ع</span>';const profitInput=$('#f-appProfit');profitInput.type='hidden';total.append(profitInput);
 const discounts=document.createElement('section');discounts.className='product-discount-card';discounts.append(controls.discountEnabled,discountConfig,controls.discountPrice,controls.discountStartsAt,controls.discountEndsAt);
-const advanced=document.createElement('details');advanced.className='product-advanced';advanced.innerHTML='<summary>خيارات إضافية وروابط الصور</summary>';advanced.append(controls.image,controls.gallery,controls.features,controls.sort_order);
+const advanced=document.createElement('details');advanced.className='product-advanced';advanced.hidden=true;advanced.append(controls.image,controls.gallery,controls.features,controls.sort_order);
 for(const [name,label] of Object.entries({baseCost:'سعر البيع جملة للتطبيق',appProfit:'ربح التطبيق',stock:'عدد القطع المتوفرة',minimumSale:'أقل سعر يمكن البيع به',sellingLimit:'أعلى سعر يمكن البيع به',name:'اسم المنتج',videoUrl:'رابط الفيديو'}))controls[name].querySelector('label').textContent=label;
 for(const name of ['baseCost','appProfit','minimumSale','sellingLimit']){controls[name].classList.add('product-money');controls[name].insertAdjacentHTML('beforeend','<span class="currency">د.ع</span>')}
 $('#f-sellingLimit').required=true;
