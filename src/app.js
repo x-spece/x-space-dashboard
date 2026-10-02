@@ -64,7 +64,11 @@ function scheduleChange(table){
 function subscribe(){
  if(channel)sb.removeChannel(channel);
  channel=sb.channel('xspace-dashboard-'+user.id).on('postgres_changes',{event:'*',schema:'public'},payload=>{
-  if(payload.table==='x_messages'){
+  if(payload.table==='x_orders'&&payload.eventType==='INSERT'){
+   const order=payload.new;
+   toast('وصل طلب جديد رقم '+(order.order_number||order.id));
+   scheduleChange('x_orders');
+  }else if(payload.table==='x_messages'){
    const r=payload.new||payload.old,t=data.x_tickets?.find(t=>t.id===r.ticket_id);
    if(t){t.latest_at=r.created_at||new Date().toISOString();}
    scheduleChange('x_messages');
