@@ -2,7 +2,7 @@ import {PGlite} from '@electric-sql/pglite';
 import fs from 'node:fs';
 const db=new PGlite();
 await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,phone text,email text);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to anon,authenticated;create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create function storage.foldername(text) returns text[] language sql as $$select (string_to_array($1,'/'))[1:array_length(string_to_array($1,'/'),1)-1]$$;create publication supabase_realtime;`);
-for (const name of ['001_x_space.sql','003_dashboard.sql','003_dashboard.sql']) await db.exec(fs.readFileSync(new URL(name,import.meta.url),'utf8'));
+for (const name of ['001_x_space.sql','003_dashboard.sql','003_dashboard.sql','005_realtime_performance.sql','005_realtime_performance.sql']) await db.exec(fs.readFileSync(new URL(name,import.meta.url),'utf8'));
 const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 await db.query('insert into auth.users(id,email) values($1,$2),($3,$4)',[owner,'owner@example.com',other,'07700000001@gmail.com']);
 await db.query('insert into x_admins(user_id) values($1)',[owner]);
@@ -16,4 +16,9 @@ await db.query('select x_admin_notify(null,$1)',['Test notification']);test((awa
 await db.query('insert into x_products(id,data,stock) values($1,$2,$3)',['new',{name:'test',baseCost:5000},5]);test((await db.query("select * from x_audit where action='insert:x_products'")).rows.length===1,'catalogue audit written');
 await db.query('update x_settings set data=$1 where id=true',[{deliveryCost:5000}]);test((await db.query("select * from x_audit where action='update:x_settings'")).rows.length===1,'settings audit written');
 await actor('','anon');try{await db.query('select x_admin_access()');throw new Error('not denied')}catch(e){test(e.message.includes('permission denied'),'anonymous access RPC denied')}
+await db.exec('reset role');
+await db.query('insert into x_tickets(id,merchant_id,created_at,latest_at) values($1,$2,$3,$3)', ['activity-test',other,'2026-01-01T00:00:00Z']);
+await db.query('insert into x_messages(id,ticket_id,sender_id,text,created_at) values($1,$2,$3,$4,$5)', ['activity-new','activity-test',owner,'latest','2026-10-02T00:00:00Z']);
+await db.query('insert into x_messages(id,ticket_id,sender_id,text,created_at) values($1,$2,$3,$4,$5)', ['activity-old','activity-test',owner,'older','2026-09-01T00:00:00Z']);
+test(new Date((await db.query("select latest_at from x_tickets where id='activity-test'")).rows[0].latest_at).toISOString()==='2026-10-02T00:00:00.000Z','older message cannot move conversation activity backwards');
 await db.close();
