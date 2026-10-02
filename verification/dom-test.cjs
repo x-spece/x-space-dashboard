@@ -26,4 +26,19 @@ run(`data.x_products=[{id:'old',created_at:'2026-01-01',sort_order:0,data:{name:
 test(w.document.querySelector('.product h3').textContent==='جديد','new product appears above older product regardless of manual sort');
 run(`data.x_tickets=[{id:'older-chat',merchant_id:'merchant',created_at:'2026-01-01',latest_at:'2026-10-02',type:'الأحدث',status:'open'},{id:'new-chat',merchant_id:'merchant',created_at:'2026-09-01',latest_at:'2026-09-01',type:'قديم',status:'open'}];route='support';filter='';render()`);
 test(w.document.querySelector('tbody tr').textContent.includes('الأحدث'),'new message moves existing conversation to top');
+
+run(`data.x_products=[{id:'photos',stock:5,data:{name:'صور',baseCost:10,image:'https://example.test/main.jpg',media:[{asset:'https://example.test/main.jpg'},{asset:'https://example.test/second.jpg'}]}}];productForm('photos')`);
+test(w.document.querySelectorAll('#photo-previews img').length===2,'published images appear without duplicates');
+w.document.querySelector('#photo-previews button').click();
+test(w.document.querySelector('#f-image').value==='https://example.test/second.jpg','removing main image promotes remaining image');
+test(!w.document.querySelector('#f-gallery').value.includes('main.jpg'),'removed image excluded from saved gallery');
+test(run("data.x_products[0].data.image")==='https://example.test/main.jpg','image changes stay local until save');
+w.document.querySelector('#photo-previews button').click();
+test(w.document.querySelector('#f-image').value===''&&w.document.querySelector('#f-gallery').value==='','removing all images clears saved fields');
+run("dialog.close();route='products';render()");
+test(w.document.querySelector('[data-action=product-delete]'),'product delete button rendered');
+run("action('product-delete','photos')");
+test(w.document.querySelector('#dialog-content').textContent.includes('صور'),'deletion asks confirmation with product name');
 w.close();
+
+
