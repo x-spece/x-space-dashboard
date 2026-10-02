@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild src/app.js --bundle --minify --format=esm --outfile=dist/app.js",
-    "test": "node verification/dom-test.cjs && node supabase/verify.mjs"
+    "test": "node verification/dom-test.cjs && node supabase/verify.mjs && node verification/landing-booking-test.cjs && node verification/landing-business-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.57.4"
