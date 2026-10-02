@@ -17,3 +17,12 @@
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 img{-webkit-user-drag:none}
+
+.product-page{min-height:100dvh;background:white}
+.product-full-page.product-dialog{width:100%;max-width:860px;max-height:none;min-height:100dvh;margin:0 auto;border-radius:0;box-shadow:none}
+.product-full-page .modalhead{position:sticky;top:0;z-index:3;background:white;padding:12px 0;border-bottom:1px solid #edf0f4}
+.product-full-page #dialog-content{padding:0 20px 24px}
+.save-spinner{display:inline-block;width:18px;height:18px;border:2px solid currentColor;border-left-color:transparent;border-radius:50%;vertical-align:middle;margin-left:8px;animation:save-spin .7s linear infinite}
+@keyframes save-spin{to{transform:rotate(360deg)}}
+form[aria-busy=true] .product-editor,form[aria-busy=true] .footer>button:first-child{pointer-events:none;opacity:.7}
+@media(max-width:600px){.product-full-page.product-dialog{width:100%;max-height:none;border-radius:0}.product-full-page #dialog-content{padding:0 16px 24px}}
