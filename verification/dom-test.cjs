@@ -10,8 +10,8 @@ function test(ok,msg){if(!ok)throw new Error(msg);console.log('PASS '+msg);count
 run('login()');test(w.document.querySelector('#login-form'),'login form rendered');run("preview=true;data={};render()");
 for(const route of ['home','orders','products','categories','merchants','finance','support','exchange','notifications','settings','audit']){run(`route='${route}';render()`);test(w.document.querySelector('#page').innerHTML.length>40,'empty route '+route)}
 run(`data={x_profiles:[{user_id:'merchant',phone:'07736578905',data:{name:'كرار',pageName:'أكس',province:'بغداد',area:'القاهرة'}}],x_orders:[{id:'test-order',merchant_id:'merchant',status:'معلق',created_at:'2026-10-01T00:00:00Z',payload:{customer:{name:'<img src=x onerror=alert(1)>',phone:'07736578905',province:'بغداد',address:'القاهرة'},sales:20000,delivery:5000,profit:10000,items:[{name:'منتج',quantity:1,sale:20000,unitCost:10000}]}}],x_withdrawals:[],x_products:[{id:'p',stock:5,active:true,sort_order:0,data:{name:'منتج',baseCost:10000,categories:[]}}]};preview=false;user={id:'owner'};allowed=true;route='orders';search='test-order';filter='';render();`);
-test(w.document.querySelectorAll('tbody tr').length===1,'search finds real order fixture');test(!w.document.querySelector('td img'),'customer text escaped');
-run("filter='تم التوصيل';page()");test(w.document.querySelectorAll('tbody tr').length===0,'status filter excludes pending');
+test(w.document.querySelectorAll('.order-card').length===1,'search finds real order fixture');test(!w.document.querySelector('.order-card img'),'customer text escaped');
+run("filter='تم التوصيل';page()");test(w.document.querySelectorAll('.order-card').length===0,'status filter excludes pending');
 run("filter='';orderDetail('test-order')");test(w.document.querySelector('#new-status'),'order status control present');test(w.document.querySelector('#dialog-content').textContent.includes('منتج'),'historical line item shown');
 run("closeProductPage();dialog.close();productForm('p')");test(w.document.querySelector('.product-full-page')&&!w.document.querySelector('#dialog').open,'product editor opens as a full page');test(w.document.querySelector('#f-stock').value==='5','product stock editor initialized');test(w.document.querySelector('#f-baseCost').value==='10000','wholesale editor initialized');
 run("closeProductPage();dialog.close();merchantDetail('merchant')");test(w.document.querySelector('#dialog-content').textContent.includes('07736578905'),'merchant details render');
@@ -39,6 +39,16 @@ run("closeProductPage();dialog.close();route='products';render()");
 test(w.document.querySelector('[data-action=product-delete]'),'product delete button rendered');
 run("action('product-delete','photos')");
 test(w.document.querySelector('#dialog-content').textContent.includes('صور'),'deletion asks confirmation with product name');
+run("closeProductPage();dialog.close();data.x_orders[0].status='قيد المراجعة';data.x_orders[0].payload.orderNumber=9;data.x_orders[0].payload.customer.phone2='07801234567';route='orders';search='000009';filter='';render()");
+test(w.document.querySelectorAll('.order-card').length===1,'six digit order search finds order');
+test(w.document.querySelector('.order-id').textContent.includes('000009'),'card shows six digit order number');
+test(w.document.querySelector('.order-card .badge').textContent.includes('قيد المراجعة'),'review status shown');
+test(w.document.querySelectorAll('.order-phone').length===2,'both customer phone numbers shown');
+test(w.document.querySelector('[data-action=card-status]'),'admin status update available on card');
+run("orderDetail('test-order')");
+test(w.document.querySelector('.order-number').textContent==='000009','details show public number instead of internal ID');
+console.log(count+' total DOM checks passed');
 w.close();
+
 
 
