@@ -86,3 +86,8 @@ const statusHistory=run("historyChanges([{field:'status',before:'قيد التج
 test(statusHistory.includes('حالة الطلب')&&statusHistory.includes('قبل:')&&statusHistory.includes('بعد:'),'history translates status change');
 const orderHistory=run("historyChanges([{field:'order',before:{customer:{phone:'0771'},items:[{name:'منتج',sale:1000}]},after:{customer:{phone:'0772'},items:[{name:'منتج',sale:2000}]}}])");
 test(orderHistory.includes('رقم الهاتف')&&orderHistory.includes('سعر البيع')&&!orderHistory.includes('customer'),'history expands customer and item changes');
+const linked=run(`messageText('مرحبا https://example.com/a?q=1&x=2، www.example.org <img src=x> javascript:alert(1)')`);
+const links=w.document.createElement('div');links.innerHTML=linked;
+test(links.querySelectorAll('a').length===2,'HTTP and www links are clickable');
+test(!links.querySelector('img'),'message HTML remains escaped');
+test([...links.querySelectorAll('a')].every(a=>a.target==='_blank'&&a.rel.includes('noopener')),'message links open safely in new tab');
