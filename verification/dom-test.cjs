@@ -44,9 +44,15 @@ test(w.document.querySelectorAll('.order-card').length===1,'six digit order sear
 test(w.document.querySelector('.order-id').textContent.includes('000009'),'card shows six digit order number');
 test(w.document.querySelector('.order-card .badge').textContent.includes('قيد المراجعة'),'review status shown');
 test(w.document.querySelectorAll('.order-phone').length===2,'both customer phone numbers shown');
-test(w.document.querySelector('[data-action=card-status]'),'admin status update available on card');
+test(w.document.querySelector('[data-order-status]')&&!w.document.querySelector('[data-action=card-status]'),'status selector saves directly without button');
 run("orderDetail('test-order')");
-test(w.document.querySelector('.order-number').textContent==='000009','details show public number instead of internal ID');
+test(w.document.querySelector('.order-number').textContent==='# 000009','details show public number instead of internal ID');
+test(w.document.querySelector('[data-action=order-chat]'),'order linked chat button rendered');
+test(w.document.querySelector('.order-details').textContent.includes('ملاحظات للشركة'),'company notes section rendered');
+test(!w.document.querySelector('[data-action=order-status]'),'details have no manual save status button');
+run("data.x_orders[0].payload.items[0].image='https://example.test/product.jpg';data.x_orders[0].payload.items[0].note='ملاحظة منتج';orderDetail('test-order')");
+test(w.document.querySelector('[data-action=order-image]')&&w.document.querySelector('[data-action=order-image-save]'),'product has enlarge and save buttons');
+test(w.document.querySelector('.od-product').textContent.includes('ملاحظة منتج'),'product note rendered');
 console.log(count+' total DOM checks passed');
 w.close();
 
