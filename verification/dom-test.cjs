@@ -73,3 +73,16 @@ console.log(count+' total checks passed');w.close();
 
 
 
+run("closeDetailPage();route='orders';search='';filter='';render()");
+w.document.querySelector('.reference-tabs').scrollLeft=-180;
+w.document.querySelector('[data-filter="قيد المراجعة"]').click();
+test(w.document.querySelector('.reference-tabs').scrollLeft===-180,'status filter preserves horizontal scroll');
+test(w.document.querySelector('.order-card-secondary [data-action=order]'),'details occupy secondary card row');
+test(!w.document.querySelector('.order-card [data-action=order-history]'),'history remains inside order details');
+test(w.document.querySelector('.order-card').textContent.includes('مراسلة التاجر'),'card uses merchant chat label');
+run("data.x_orders[0].status='تم التوصيل';filter='';page()");
+test(w.document.querySelector('[data-action=order-edit]'),'edit control remains visible after delivery');
+const statusHistory=run("historyChanges([{field:'status',before:'قيد التجهيز',after:'تم التوصيل'}])");
+test(statusHistory.includes('حالة الطلب')&&statusHistory.includes('قبل:')&&statusHistory.includes('بعد:'),'history translates status change');
+const orderHistory=run("historyChanges([{field:'order',before:{customer:{phone:'0771'},items:[{name:'منتج',sale:1000}]},after:{customer:{phone:'0772'},items:[{name:'منتج',sale:2000}]}}])");
+test(orderHistory.includes('رقم الهاتف')&&orderHistory.includes('سعر البيع')&&!orderHistory.includes('customer'),'history expands customer and item changes');
