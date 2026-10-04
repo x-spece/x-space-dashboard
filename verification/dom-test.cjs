@@ -12,7 +12,7 @@ for(const route of ['home','orders','products','categories','merchants','finance
 run(`data={x_profiles:[{user_id:'merchant',phone:'07736578905',data:{name:'كرار',pageName:'أكس',province:'بغداد',area:'القاهرة'}}],x_orders:[{id:'test-order',merchant_id:'merchant',status:'معلق',created_at:'2026-10-01T00:00:00Z',payload:{customer:{name:'<img src=x onerror=alert(1)>',phone:'07736578905',province:'بغداد',address:'القاهرة'},sales:20000,delivery:5000,profit:10000,items:[{name:'منتج',quantity:1,sale:20000,unitCost:10000}]}}],x_withdrawals:[],x_products:[{id:'p',stock:5,active:true,sort_order:0,data:{name:'منتج',baseCost:10000,categories:[]}}]};preview=false;user={id:'owner'};allowed=true;route='orders';search='test-order';filter='';render();`);
 test(w.document.querySelectorAll('.order-card').length===1,'search finds real order fixture');test(!w.document.querySelector('.order-card img'),'customer text escaped');
 run("filter='تم التوصيل';page()");test(w.document.querySelectorAll('.order-card').length===0,'status filter excludes pending');
-run("filter='';orderDetail('test-order')");test(w.document.querySelector('#new-status'),'order status control present');test(w.document.querySelector('#dialog-content').textContent.includes('منتج'),'historical line item shown');
+run("filter='';orderDetail('test-order')");test(w.document.querySelector('#new-status'),'order status control present');test(w.document.querySelector('#detail-screen')&&!w.document.querySelector('#dialog').open,'order details open as page');test(w.document.querySelector('#dialog-content').textContent.includes('منتج'),'historical line item shown');
 run("closeProductPage();dialog.close();productForm('p')");test(w.document.querySelector('.product-full-page')&&!w.document.querySelector('#dialog').open,'product editor opens as a full page');test(w.document.querySelector('#f-stock').value==='5','product stock editor initialized');test(w.document.querySelector('#f-baseCost').value==='10000','wholesale editor initialized');
 run("closeProductPage();dialog.close();merchantDetail('merchant')");test(w.document.querySelector('#dialog-content').textContent.includes('07736578905'),'merchant details render');
 run("closeProductPage();dialog.close();route='finance';render()");test(w.document.querySelector('#page').textContent.includes('أرصدة التجار'),'merchant balances section present');
@@ -25,7 +25,7 @@ run("productForm('p')");w.document.querySelector('#edit-description').click();te
 run(`closeProductPage();data.x_products=[{id:'old',created_at:'2026-01-01',sort_order:0,data:{name:'قديم',baseCost:1}},{id:'new',created_at:'2026-10-02',sort_order:99,data:{name:'جديد',baseCost:1}}];search='';route='products';render()`);
 test(w.document.querySelector('.product h3').textContent==='جديد','new product appears above older product regardless of manual sort');
 run(`data.x_tickets=[{id:'older-chat',merchant_id:'merchant',created_at:'2026-01-01',latest_at:'2026-10-02',type:'الأحدث',status:'open'},{id:'new-chat',merchant_id:'merchant',created_at:'2026-09-01',latest_at:'2026-09-01',type:'قديم',status:'open'}];route='support';filter='';render()`);
-test(w.document.querySelector('tbody tr').textContent.includes('الأحدث'),'new message moves existing conversation to top');
+test(w.document.querySelector('.support-conversation').textContent.includes('الأحدث'),'new message moves existing conversation to top');
 
 run(`data.x_products=[{id:'photos',stock:5,data:{name:'صور',baseCost:10,image:'https://example.test/main.jpg',media:[{asset:'https://example.test/main.jpg'},{asset:'https://example.test/second.jpg'}]}}];productForm('photos')`);
 test(w.document.querySelectorAll('#photo-previews img').length===2,'published images appear without duplicates');
@@ -54,7 +54,22 @@ run("data.x_orders[0].payload.items[0].image='https://example.test/product.jpg';
 test(w.document.querySelector('[data-action=order-image]')&&w.document.querySelector('[data-action=order-image-save]'),'product has enlarge and save buttons');
 test(w.document.querySelector('.od-product').textContent.includes('ملاحظة منتج'),'product note rendered');
 console.log(count+' total DOM checks passed');
-w.close();
+(async()=>{
+run("closeDetailPage();route='orders';search='';filter='';render();window.scrollY=210;orderDetail('test-order')");
+test(w.document.querySelector('#detail-screen')&&!w.document.querySelector('dialog').open,'detail page is independent of dialog');
+run("closeDetailPage()");test(!w.document.querySelector('#detail-screen')&&!w.document.querySelector('#app').hidden&&w.scrollY===210,'back restores original scroll and list');
+run("orderFilterSheet()");test(w.document.querySelector('.order-filter-dialog'),'filter opens bottom sheet');
+w.document.querySelector('[name=from]').value='2026-10-02';w.document.querySelector('#order-filter-form').dispatchEvent(new w.Event('submit',{cancelable:true}));
+test(w.document.querySelectorAll('.order-card').length===0,'date range excludes earlier orders');
+run("orderFilters={from:'',to:'',province:'',sort:'newest'};filter='';page();data.x_orders[0].status='قيد المراجعة';orderDetail('test-order');refresh=async()=>{};sb.rpc=async(name,args)=>{window.statusCall={name,args};return {data:true}};");
+const select=w.document.querySelector('#new-status');select.value='قيد التجهيز';await run("updateOrderStatus('test-order',document.querySelector('#new-status'))");
+test(w.statusCall.name==='x_admin_order_status'&&w.statusCall.args.p_status==='قيد التجهيز','select directly calls status API');
+test(run("data.x_orders[0].status")==='قيد التجهيز','successful direct change updates status');
+run("sb.rpc=async()=>({error:{message:'رفض تجريبي'}})");w.document.querySelector('#new-status').value='قيد التوصيل';await run("updateOrderStatus('test-order',document.querySelector('#new-status'))");test(w.document.querySelector('#new-status').value==='قيد التجهيز','failed change restores confirmed status');
+run("closeDetailPage();data.x_tickets=[{id:'chat-test',merchant_id:'merchant',order_id:'test-order',type:'دعم طلب',status:'open'}];sb.from=()=>({select(){return this},eq(){return this},order(){return this},then(resolve){return Promise.resolve({data:[]}).then(resolve)}})");
+await run("ticketDetail('chat-test')");test(w.document.querySelector('.chat-screen')&&!w.document.querySelector('dialog').open,'support chat opens as full page');test(w.document.querySelector('#detail-screen').textContent.includes('000009'),'chat header includes public order number');
+console.log(count+' total checks passed');w.close();
+})().catch(e=>{console.error(e);process.exitCode=1});
 
 
 
