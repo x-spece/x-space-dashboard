@@ -68,7 +68,7 @@ test(run("data.x_orders[0].status")==='قيد التجهيز','successful direct
 run("sb.rpc=async()=>({error:{message:'رفض تجريبي'}})");w.document.querySelector('#new-status').value='قيد التوصيل';await run("updateOrderStatus('test-order',document.querySelector('#new-status'))");test(w.document.querySelector('#new-status').value==='قيد التجهيز','failed change restores confirmed status');
 run("closeDetailPage();data.x_tickets=[{id:'chat-test',merchant_id:'merchant',order_id:'test-order',type:'دعم طلب',status:'open'}];sb.from=()=>({select(){return this},eq(){return this},order(){return this},then(resolve){return Promise.resolve({data:[]}).then(resolve)}})");
 await run("ticketDetail('chat-test')");test(w.document.querySelector('.chat-screen')&&!w.document.querySelector('dialog').open,'support chat opens as full page');test(w.document.querySelector('#detail-screen').textContent.includes('000009'),'chat header includes public order number');
-console.log(count+' total checks passed');w.close();
+await new Promise(r=>setTimeout(r,20));console.log(count+' total checks passed');w.close();
 })().catch(e=>{console.error(e);process.exitCode=1});
 
 
