@@ -28,7 +28,7 @@ perform x_private.release_items(o.payload->'items');
 result:=result||x_private.reserve(a->'items',(a->>'freeDelivery')::boolean)||jsonb_build_object('customer',x_private.customer(a->'customer'));
 end if;
 end if;
-entry:=jsonb_build_object('date',now(),'by',u,'byName','الدعم','decision',case when p_approve then 'مقبول' else 'مرفوض' end,'changes',jsonb_build_array(jsonb_build_object('field','order','before',r->'before','after',case when p_approve then result-'history'-'pendingEdit' else a end)));
+entry:=jsonb_build_object('date',now(),'by',u,'byName','الدعم','decision',case when p_approve then 'مقبول' else 'مرفوض' end,'changes',jsonb_build_array(jsonb_build_object('field','order','before',r->'before','after',case when p_approve then result-'history'-'pendingEdit' else (r->'before')||a end)));
 result:=result||jsonb_build_object('pendingEdit',r||jsonb_build_object('status',case when p_approve then 'approved' else 'rejected' end,'decidedAt',now()),'history',jsonb_build_array(entry)||coalesce(o.payload->'history','[]'));
 update public.x_orders set payload=result,updated_at=now() where id=p_id;
 perform x_private.notify(o.merchant_id,'orders',case when p_approve then 'وافق الدعم على تعديل الطلب' else 'رفض الدعم تعديل الطلب' end,p_id);
