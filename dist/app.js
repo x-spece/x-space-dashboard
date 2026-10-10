@@ -189,7 +189,7 @@ async function startNotifications(){await stopNotifications();notificationUser=(
 async function stopNotifications(){clearInterval(notificationTimer);if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(webToken&&notificationUser){try{await noticeRpc('unregister',{token:webToken});}catch(_){}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
 async function openNotification(n){await noticeRpc('read',{id:n.id});await refreshNotifications();const t=n.target||{};
  if(t.screen==='ride'){showPage('rides');await loadRides();await trackRide(t.ride_id);}
- else if(t.screen==='support'){showPage('support');await loadSupport();await chat('support',{user_id:t.user_id,name:'الدعم'});}
+ else if(t.screen==='support'){showPage('support');await loadSupport();await chat('support',supportRooms.find(r=>r.user_id===t.user_id)||{user_id:t.user_id,name:'محادثة دعم'});}
  else if(t.screen==='recovery'){showPage('support');await loadSupport();const r=recovery.find(r=>r.id===t.thread_id);if(r)await chat('recovery',r);}
  else if(t.screen==='application'){showPage('applications');await loadApplications();const a=applications.find(a=>a.user_id===t.user_id);if(a)await applicationDetail(a);else { $('applicationStatus').value='';$('applicationSearch').value=t.user_id;const rows=await applicationRpc('list',{limit:200});const found=rows.find(a=>a.user_id===t.user_id);if(found)await applicationDetail(found); }}
  else if(t.screen==='finance'||t.screen==='wallet'){showPage('finance');await loadFinance();}
