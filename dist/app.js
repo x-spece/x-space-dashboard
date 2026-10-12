@@ -24,11 +24,41 @@ function localPhone(v){const d=String(v??'').replace(/[٠-٩]/g,c=>String(c.char
 const money=n=>new Intl.NumberFormat('en-US').format(n)+' د.ع';
 const stateNames={pending:'قيد البحث',accepted:'الكابتن بالطريق',arrived:'وصل الكابتن',in_progress:'الرحلة جارية',completed:'مكتملة',cancelled:'ملغية'};
 async function pricingRpc(action,data={}){const {data:result,error}=await db.rpc('tkt_pricing',{p_action:action,p_data:data});if(error){if(error.message.includes('PRICING_CONFLICT'))throw new Error('التسعيرة تغيّرت من جلسة ثانية؛ أعد تحميلها قبل الحفظ');throw error}return result}
-function priceNotice(){const bad=tiers.some((t,i)=>i&&t.fare<tiers[i-1].fare);$('priceWarning').hidden=!bad;$('priceWarning').textContent='انتبه: كروة إحدى الشرائح أقل من الشريحة السابقة. راجع الأسعار قبل الحفظ.'}
-function renderTiers(){const body=$('tiers');body.replaceChildren();tiers.forEach((tier,i)=>{const tr=document.createElement('tr');const from=document.createElement('td');from.textContent=i?String(tiers[i-1].up_to_m):'0';tr.append(from);for(const key of ['up_to_m','fare']){const td=document.createElement('td'),input=document.createElement('input');input.type='number';input.min=key==='up_to_m'?'1':'0';input.max=key==='up_to_m'?'100000':'1000000';input.value=tier[key];input.setAttribute('aria-label',key==='fare'?'الكروة بالدينار':'نهاية المسافة بالمتر');input.oninput=()=>{tier[key]=Number(input.value);priceNotice();[...body.children].forEach((row,j)=>row.firstChild.textContent=j?String(tiers[j-1].up_to_m):'0')};td.append(input);tr.append(td)}const td=document.createElement('td'),remove=document.createElement('button');remove.className='secondary';remove.textContent='حذف';remove.onclick=()=>{tiers.splice(i,1);renderTiers()};td.append(remove);tr.append(td);body.append(tr)});priceNotice()}
+function tierNumber(value){const normalized=String(value).replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-0x660)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-0x6f0)).replace(/[,٬\s]/g,'');return normalized===''?null:Number(normalized);}
+function tierProblem(){
+ if(!tiers.length||tiers.length>30)return 'أضف من شريحة واحدة إلى 30 شريحة';
+ let previous=0;
+ for(let i=0;i<tiers.length;i++){const t=tiers[i],from=t.from_m??(i?tiers[i-1].up_to_m:0);
+  if(!Number.isInteger(from)||from!==previous)return i===0?'الشريحة الأولى تبدأ من صفر متر':'بداية الشريحة يجب أن تساوي نهاية الشريحة السابقة';
+  if(!Number.isInteger(t.up_to_m)||t.up_to_m<=from||t.up_to_m>100000)return 'أدخل نهاية أكبر من البداية لكل شريحة، وبحد أقصى 100,000 متر';
+  if(!Number.isInteger(t.fare)||t.fare<0||t.fare>1000000)return 'أدخل سعرًا صحيحًا لكل شريحة من صفر إلى 1,000,000 دينار';
+  previous=t.up_to_m;
+ }
+ return null;
+}
+function priceNotice(){const issue=tierProblem(),descending=tiers.some((t,i)=>i&&Number.isFinite(t.fare)&&Number.isFinite(tiers[i-1].fare)&&t.fare<tiers[i-1].fare);$('priceWarning').hidden=!issue&&!descending;$('priceWarning').textContent=issue||'انتبه: كروة إحدى الشرائح أقل من الشريحة السابقة. راجع الأسعار قبل الحفظ.';}
+function renderTiers(){
+ const body=$('tiers');body.replaceChildren();
+ tiers.forEach((tier,i)=>{
+  if(!Object.hasOwn(tier,'from_m'))tier.from_m=i?tiers[i-1].up_to_m:0;
+  const tr=document.createElement('tr');
+  for(const [key,label]of [['from_m','بداية المسافة بالمتر'],['up_to_m','نهاية المسافة بالمتر'],['fare','الكروة بالدينار']]){
+   const td=document.createElement('td'),input=document.createElement('input');input.type='text';input.inputMode='numeric';input.dir='ltr';input.value=tier[key]??'';input.placeholder=key==='fare'?'السعر بالدينار':'المسافة بالمتر';input.dataset.tierField=key;input.setAttribute('aria-label',label+' · الشريحة '+(i+1));input.disabled=!canEdit('pricing');
+   input.oninput=()=>{
+    tier[key]=tierNumber(input.value);
+    if(key==='from_m'&&i>0){tiers[i-1].up_to_m=tier[key];body.children[i-1].querySelector('[data-tier-field="up_to_m"]').value=tier[key]??'';}
+    if(key==='up_to_m'&&i<tiers.length-1){tiers[i+1].from_m=tier[key];body.children[i+1].querySelector('[data-tier-field="from_m"]').value=tier[key]??'';}
+    priceNotice();
+   };td.append(input);tr.append(td);
+  }
+  const td=document.createElement('td'),remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.textContent='حذف';remove.disabled=!canEdit('pricing');remove.onclick=()=>{tiers.splice(i,1);tiers.forEach((t,j)=>t.from_m=j?tiers[j-1].up_to_m:0);renderTiers();};td.append(remove);tr.append(td);body.append(tr);
+ });priceNotice();
+}
+function addPricingTier(){if(!canEdit('pricing'))return status('صلاحيتك للعرض فقط');if(tiers.length>=30)return status('الحد الأقصى 30 شريحة');if(tiers.length&&tierProblem())return status('أكمل بيانات الشرائح الحالية قبل إضافة شريحة جديدة');tiers.push({from_m:tiers.at(-1)?.up_to_m??0,up_to_m:null,fare:null});renderTiers();$('tiers').lastElementChild.querySelector('[data-tier-field="up_to_m"]').focus();}
+
 async function loadPricing(){pricing=await pricingRpc('get');tiers=structuredClone(pricing.tiers);for(const key of priceKeys)$(key).value=pricing[key];$('priceMeta').textContent=`إصدار التسعيرة ${pricing.revision} · آخر تعديل ${new Date(pricing.updated_at).toLocaleString('ar-IQ')}`;renderTiers();$('previewResult').textContent=''}
-function pricingInput(){const data={tiers,expected_revision:pricing.revision};let previous=0;if(!tiers.length||tiers.length>30)throw new Error('أضف من شريحة واحدة إلى 30 شريحة');for(const t of tiers){if(!Number.isInteger(t.up_to_m)||t.up_to_m<=previous||t.up_to_m>100000||!Number.isInteger(t.fare)||t.fare<0||t.fare>1000000)throw new Error('رتب المسافات تصاعديًا وأدخل أسعارًا صحيحة');previous=t.up_to_m}for(const k of priceKeys){data[k]=Number($(k).value);if(!Number.isInteger(data[k])||data[k]<0)throw new Error('أدخل أرقامًا صحيحة في إعدادات التسعيرة')}if(data.night_start>23||data.night_end>23||data.overflow_step_m<1)throw new Error('تحقق من ساعات الليل والمسافة الإضافية');return data}
-$('addTier').onclick=()=>{if(tiers.length>=30)return status('الحد الأقصى 30 شريحة');tiers.push({up_to_m:(tiers.at(-1)?.up_to_m||0)+1000,fare:tiers.at(-1)?.fare||500});renderTiers()};
+function pricingInput(){const issue=tierProblem();if(issue)throw new Error(issue);const data={tiers:tiers.map(({up_to_m,fare})=>({up_to_m,fare})),expected_revision:pricing.revision};for(const k of priceKeys){data[k]=tierNumber($(k).value);if(!Number.isInteger(data[k])||data[k]<0)throw new Error('أدخل أرقامًا صحيحة في إعدادات التسعيرة')}if(data.night_start>23||data.night_end>23||data.overflow_step_m<1)throw new Error('تحقق من ساعات الليل والمسافة الإضافية');return data}
+$('addTier').onclick=addPricingTier;
 $('savePricing').onclick=()=>run(async()=>{const data=pricingInput();await manage('pricing_save',data);await loadPricing();status('تم حفظ التسعيرة وتفعيلها للمشاوير الجديدة')});
 $('reloadPricing').onclick=()=>run(loadPricing);
 $('previewFare').onclick=()=>run(async()=>{const distance=Number($('previewDistance').value);if(!Number.isFinite(distance)||distance<=0)throw new Error('أدخل مسافة موجبة');const day=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Baghdad'});const at=`${day}T${$('previewTime').value==='night'?'23':'12'}:00:00+03:00`;const result=await pricingRpc('preview',{distance_m:distance,at});$('previewResult').textContent=`${money(result.fare)} — أساس ${money(result.base_fare)} + ليل ${money(result.night_surcharge)}`});
@@ -501,6 +531,7 @@ async function loadWheel(more=false){
 }
 $('reloadWheel').onclick=()=>run(()=>loadWheel());$('moreWheelClaims').onclick=()=>run(()=>loadWheel(true));$('wheelClaimStatus').onchange=()=>run(()=>loadWheel());
 $('saveWheelState').onclick=()=>run(async()=>{await wheelRpc('configure',{enabled:$('wheelEnabled').checked});await loadWheel();status(wheelData.enabled?'العجلة مفعّلة':'العجلة متوقفة مؤقتاً')});
+
 
 
 
