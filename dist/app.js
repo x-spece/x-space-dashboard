@@ -14,7 +14,7 @@ async function run(action){if(busy)return;busy=true;document.getElementById('adm
 $('loginForm').onsubmit=e=>{e.preventDefault();run(async()=>{const {data,error}=await db.functions.invoke('taktooka-admin-login',{body:{phone:$('phone').value.trim(),pin:$('pin').value}});$('pin').value='';if(error||!data?.refresh_token)throw error||new Error('بيانات الدخول غير صحيحة');const session=await db.auth.refreshSession({refresh_token:data.refresh_token});if(session.error)throw session.error;await load()})};
 $('draw').onclick=()=>{drawing=true;editing=null;points=[];preview();status('انقر حول المنطقة لرسم حدود مغلقة، ثم اعتماد المنطقة')};$('undo').onclick=()=>{points.pop();preview()};
 $('finish').onclick=()=>{if(points.length<3)return status('حدد ثلاث نقاط على الأقل');const name=$('name').value.trim();if(!name)return status('اكتب اسم المنطقة');if(points.some(([lat,lng])=>lat<29||lat>38||lng<38||lng>49))return status('المنطقة يجب أن تكون داخل العراق');const ring=points.map(([lat,lng])=>[lng,lat]);ring.push([...ring[0]]);const zone={id:editing||`zone_${crypto.randomUUID().slice(0,8)}`,name:editing?name:`${$('governorate').value} — ${name}`,geometry:{type:'Polygon',coordinates:[ring]}};zones=zones.filter(z=>z.id!==zone.id);zones.push(zone);drawing=false;points=[];if(draft)map.removeLayer(draft);render();status('تم اعتماد المنطقة محليًا؛ اضغط حفظ التغييرات لتفعيلها بالتطبيق')};
-$('save').onclick=()=>run(async()=>{if(!zones.length)throw new Error('أضف منطقة خدمة واحدة على الأقل');if(drawing)throw new Error('اعتمد حدود المنطقة قبل الحفظ');await manage('dispatch_configure',{zones,search_s:Number($('search').value),max_eta_s:Number($('eta').value)*60,stale_s:Number($('stale').value)});await load();showPage('coverage');status('تم حفظ وتفعيل مناطق الخدمة بالتطبيق: '+zones.map(z=>z.name).join('، '))});$('reload').onclick=()=>run(load);$('logout').onclick=()=>run(async()=>{stopLive();await stopNotifications();closeDetail();await db.auth.signOut();$('admin').hidden=true;document.body.classList.remove('signed-in');setMenu(false);$('login').hidden=false;$('logout').hidden=true;zones=[];rides=[];users=[];$('rideList').replaceChildren();$('userList').replaceChildren();status('تم تسجيل الخروج')});
+$('save').onclick=()=>run(async()=>{if(!zones.length)throw new Error('أضف منطقة خدمة واحدة على الأقل');if(drawing)throw new Error('اعتمد حدود المنطقة قبل الحفظ');await manage('dispatch_configure',{zones,search_s:Number($('search').value),max_eta_s:Number($('eta').value)*60,stale_s:Number($('stale').value)});await load();showPage('coverage');status('تم حفظ وتفعيل مناطق الخدمة بالتطبيق: '+zones.map(z=>z.name).join('، '))});$('reload').onclick=()=>run(load);$('logout').onclick=()=>run(async()=>{stopLive();await stopNotifications(true);closeDetail();await db.auth.signOut();$('admin').hidden=true;document.body.classList.remove('signed-in');setMenu(false);$('login').hidden=false;$('logout').hidden=true;zones=[];rides=[];users=[];$('rideList').replaceChildren();$('userList').replaceChildren();status('تم تسجيل الخروج')});
 
 
 let pricing,tiers=[],rides=[],users=[];
@@ -185,15 +185,63 @@ async function applicationDetail(a){
 }
 $('refreshApplications').onclick=()=>run(()=>loadApplications());$('moreApplications').onclick=()=>run(()=>loadApplications(true));$('applicationStatus').onchange=()=>run(()=>loadApplications());$('applicationSearch').onchange=()=>run(()=>loadApplications());
 
-let notificationChannel,notificationTimer,notificationRows=[],notificationUser,webMessaging,webToken;
+let notificationChannel,notificationTimer,notificationRows=[],notificationUser,webMessaging,webToken,webRegistration,webMessageUnsubscribe,pushInitializing;
+let notificationEpoch=0;
 const notified=new Set();
-async function noticeRpc(action,data={}){const r=await db.rpc('tkt_notification_action',{p_action:action,p_data:data});if(r.error)throw r.error;return r.data;}
-async function refreshNotifications(){if(!notificationUser)return;notificationRows=await noticeRpc('list');const count=notificationRows.filter(n=>!n.read_at&&n.kind!=='offer_end').length;$('notifications').textContent=`الإشعارات${count?' ('+count+')':''}`;}
-async function startNotifications(){await stopNotifications();notificationUser=(await db.auth.getUser()).data.user?.id;if(!notificationUser)return;$('notifications').hidden=false;$('enableNotifications').hidden=false;await refreshNotifications();
- notificationChannel=db.channel('admin-notifications-'+notificationUser).on('postgres_changes',{event:'INSERT',schema:'public',table:'tkt_notifications',filter:'user_id=eq.'+notificationUser},async payload=>{const n=payload.new;if(!notified.has(n.id)&&n.kind!=='offer_end'){notified.add(n.id);if(!webMessaging&&globalThis.Notification?.permission==='granted'){const popup=new Notification(n.title,{body:n.body,tag:n.id});popup.onclick=()=>{window.focus();run(()=>openNotification(n));popup.close();}}}await refreshNotifications();}).subscribe();
- notificationTimer=setInterval(()=>refreshNotifications().catch(()=>{}),15000);
+const pushStorageKey='taktooka-admin-push';
+function savedPush(){try{return JSON.parse(localStorage.getItem(pushStorageKey)||'null')}catch(_){return null}}
+function rememberPush(value){try{if(value)localStorage.setItem(pushStorageKey,JSON.stringify(value));else localStorage.removeItem(pushStorageKey)}catch(_){}}
+function pushState(label,error=''){$('enableNotifications').textContent=label;$('enableNotifications').title=error;}
+function validNotice(n){return n.kind!=='offer_end'&&(!n.expires_at||Date.parse(n.expires_at)>Date.now());}
+async function showDeviceNotice(n){
+ if(!notificationUser||n.user_id!==notificationUser||!validNotice(n)||notified.has(n.id)||globalThis.Notification?.permission!=='granted')return;
+ const epoch=notificationEpoch;notified.add(n.id);
+ try{const registration=webRegistration||await navigator.serviceWorker?.getRegistration(new URL('./',location.href).href);
+  if(epoch!==notificationEpoch)return;
+  const options={body:n.body,tag:n.id,icon:new URL('./assets/logo.png',location.href).href,data:{notification_id:n.id,recipient_id:n.user_id,target:n.target||{}}};
+  if(registration)await registration.showNotification(n.title,options);
+  else{const popup=new Notification(n.title,options);popup.onclick=()=>{window.focus();run(()=>openNotification(n));popup.close();};}
+ }catch(_){notified.delete(n.id);}
 }
-async function stopNotifications(){clearInterval(notificationTimer);if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(webToken&&notificationUser){try{await noticeRpc('unregister',{token:webToken});}catch(_){}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
+async function waitForPushWorker(registration){
+ if(!registration.installing&&!registration.waiting&&registration.active?.state==='activated')return;
+ const worker=registration.installing||registration.waiting||registration.active;
+ if(!worker)throw new Error('تعذّر تشغيل خدمة إشعارات الخلفية');
+ await new Promise((resolve,reject)=>{const finish=error=>{clearTimeout(timer);worker.removeEventListener('statechange',changed);error?reject(error):resolve();};const changed=()=>{if(worker.state==='activated')finish();else if(worker.state==='redundant')finish(new Error('تعذّر تحديث خدمة الإشعارات'));};const timer=setTimeout(()=>finish(new Error('تأخر تشغيل خدمة الإشعارات؛ أعد المحاولة')),20000);worker.addEventListener('statechange',changed);changed();});
+}
+async function loadPushSdk(){return Promise.all([import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js')]);}
+async function initializeWebPush(){
+ if(!notificationUser||globalThis.Notification?.permission!=='granted')return false;
+ if(pushInitializing)return pushInitializing;
+ const epoch=notificationEpoch,userId=notificationUser;
+ const pending=(async()=>{try{
+  if(!('serviceWorker'in navigator))throw new Error('افتح الداشبورد بمتصفح يدعم إشعارات الخلفية مثل Chrome');
+  pushState('جاري تفعيل إشعارات الخلفية…');
+  const response=await fetch('./firebase-config.json',{cache:'no-store'});if(!response.ok)throw new Error('تعذّر تحميل إعدادات الإشعارات');const config=await response.json();
+  if(!config.apiKey||!config.projectId||!config.messagingSenderId||!config.appId)throw new Error('إعدادات إشعارات الويب غير مكتملة');
+  const [appApi,msgApi]=await loadPushSdk();if(!await msgApi.isSupported())throw new Error('هذا المتصفح لا يدعم إشعارات الخلفية؛ استخدم Chrome');
+  const app=appApi.getApps().find(a=>a.name==='taktooka-dashboard')||appApi.initializeApp(config,'taktooka-dashboard');
+  const messaging=msgApi.getMessaging(app),registration=await navigator.serviceWorker.register('./firebase-messaging-sw.js',{updateViaCache:'none'});
+  await waitForPushWorker(registration);
+  const token=await msgApi.getToken(messaging,{vapidKey:config.vapidKey||undefined,serviceWorkerRegistration:registration});
+  if(!token)throw new Error('تعذّر تسجيل هذا الجهاز للإشعارات');if(epoch!==notificationEpoch)return false;
+  const old=savedPush();if(old?.userId===userId&&old.token!==token)await noticeRpc('unregister',{token:old.token});
+  await noticeRpc('register',{token,platform:'web'});
+  if(epoch!==notificationEpoch){await noticeRpc('unregister',{token}).catch(()=>{});return false;}
+  webMessageUnsubscribe?.();webRegistration=registration;webMessaging=messaging;webToken=token;rememberPush({userId,token});
+  webMessageUnsubscribe=msgApi.onMessage(messaging,m=>{const d=m.data||{};if(d.recipient_id!==notificationUser)return;showDeviceNotice({id:d.notification_id,user_id:d.recipient_id,kind:d.kind,title:d.title||m.notification?.title,body:d.body||m.notification?.body,expires_at:d.expires_at,target:d}).catch(()=>{});refreshNotifications().catch(()=>{});});
+  pushState('إشعارات الخلفية مفعّلة ✓');return true;
+ }catch(e){if(epoch===notificationEpoch){webMessaging=null;pushState('إعادة تفعيل إشعارات الخلفية',message(e));}return false;}})();
+ pushInitializing=pending;try{return await pending}finally{if(pushInitializing===pending)pushInitializing=null;}
+}
+async function noticeRpc(action,data={}){const r=await db.rpc('tkt_notification_action',{p_action:action,p_data:data});if(r.error)throw r.error;return r.data;}
+async function refreshNotifications(){if(!notificationUser)return;const epoch=notificationEpoch,rows=await noticeRpc('list');if(epoch!==notificationEpoch)return;notificationRows=rows;const count=notificationRows.filter(n=>!n.read_at&&n.kind!=='offer_end').length;$('notifications').textContent=`الإشعارات${count?' ('+count+')':''}`;}
+async function startNotifications(){await stopNotifications();notificationUser=(await db.auth.getUser()).data.user?.id;if(!notificationUser)return;$('notifications').hidden=false;$('enableNotifications').hidden=false;await refreshNotifications();
+ notificationChannel=db.channel('admin-notifications-'+notificationUser).on('postgres_changes',{event:'INSERT',schema:'public',table:'tkt_notifications',filter:'user_id=eq.'+notificationUser},async payload=>{if(!webMessaging)await showDeviceNotice(payload.new);await refreshNotifications();}).subscribe();
+ notificationTimer=setInterval(()=>refreshNotifications().catch(()=>{}),15000);
+ pushState('تفعيل إشعارات الجهاز');await initializeWebPush();
+}
+async function stopNotifications(unregister=false){notificationEpoch++;pushInitializing=null;clearInterval(notificationTimer);webMessageUnsubscribe?.();webMessageUnsubscribe=null;if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(unregister&&notificationUser){const saved=savedPush(),token=webToken||(saved?.userId===notificationUser?saved.token:null);if(token)await noticeRpc('unregister',{token});rememberPush(null);if(webRegistration){const notices=await webRegistration.getNotifications();notices.forEach(n=>n.close());}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;webRegistration=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
 async function openNotification(n){await noticeRpc('read',{id:n.id});await refreshNotifications();const t=n.target||{};
  if(t.screen==='ride'){showPage('rides');await loadRides();await trackRide(t.ride_id);}
  else if(t.screen==='support'){showPage('support');await loadSupport();await chat('support',supportRooms.find(r=>r.user_id===t.user_id)||{user_id:t.user_id,name:'محادثة دعم'});}
@@ -203,11 +251,8 @@ async function openNotification(n){await noticeRpc('read',{id:n.id});await refre
  else {showPage('users');await loadUsers();}
 }
 $('notifications').onclick=()=>run(async()=>{await refreshNotifications();const body=openDetail('الإشعارات');body.append(button('قراءة الكل',async()=>{await noticeRpc('read_all');await refreshNotifications();closeDetail();}));for(const n of notificationRows.filter(n=>n.kind!=='offer_end'))body.append(record((n.read_at?'':'● ')+n.title,n.body+' · '+dates(n.created_at),[button('فتح',()=>openNotification(n))]));empty(body);});
-$('enableNotifications').onclick=()=>run(async()=>{if(!('Notification'in window))throw new Error('هذا المتصفح لا يدعم إشعارات الجهاز');const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('اسمح بالإشعارات من إعدادات المتصفح');
- try{const config=await fetch('./firebase-config.json').then(r=>r.ok?r.json():null);if(!config?.apiKey){status('الإشعارات أثناء فتح اللوحة مفعّلة؛ إشعارات الخلفية تحتاج إعداد Firebase للويب');return;}
- const [appApi,msgApi]=await Promise.all([import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js')]);
- if(!await msgApi.isSupported())throw new Error('المتصفح لا يدعم Firebase Messaging');const app=appApi.initializeApp(config);webMessaging=msgApi.getMessaging(app);const registration=await navigator.serviceWorker.register('./firebase-messaging-sw.js');webToken=await msgApi.getToken(webMessaging,{vapidKey:config.vapidKey||undefined,serviceWorkerRegistration:registration});await noticeRpc('register',{token:webToken,platform:'web'});msgApi.onMessage(webMessaging,m=>{const d=m.data||{};if(d.recipient_id!==notificationUser)return;const popup=new Notification(d.title,{body:d.body,tag:d.notification_id});popup.onclick=()=>{window.focus();run(()=>openNotification({id:d.notification_id,target:d}));popup.close();};refreshNotifications().catch(()=>{});});status('تم تفعيل إشعارات الجهاز والخلفية');
- }catch(e){status('الإشعارات داخل اللوحة مفعّلة؛ تعذّر ربط إشعارات الخلفية: '+message(e));}});
+$('enableNotifications').onclick=()=>run(async()=>{if(!('Notification'in window))throw new Error('هذا المتصفح لا يدعم إشعارات الجهاز');const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('اسمح بالإشعارات من إعدادات المتصفح');if(await initializeWebPush())status('تم تفعيل إشعارات الجهاز والخلفية');else status($('enableNotifications').title||'تعذّر تفعيل إشعارات الخلفية');});
+window.addEventListener('online',()=>{if(notificationUser)initializeWebPush().catch(()=>{});});
 if('serviceWorker'in window.navigator)window.navigator.serviceWorker.addEventListener('message',event=>{if(event.data?.type==='tkt-notice-click'&&notificationUser)run(async()=>{await refreshNotifications();const n=notificationRows.find(n=>n.id===event.data.id);if(n)await openNotification(n);});});
 const {data:{session}}=await db.auth.getSession();if(session){await run(load);const id=new URL(window.location.href).searchParams.get('notice');if(id){const n=notificationRows.find(n=>n.id===id);if(n)await run(()=>openNotification(n));}}
 
