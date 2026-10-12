@@ -1,5 +1,5 @@
 export function createEmergencyAlarm({fetchCases,onState,createAudioContext,setIntervalFn=setInterval,clearIntervalFn=clearInterval}){
- let userId=null,epoch=0,revision=0,timer=null,pending=new Set(),audio=null,source=null,polling=null,pollAgain=false,error=null;
+ let userId=null,epoch=0,revision=0,timer=null,pending=new Set(),closed=new Set(),audio=null,source=null,polling=null,pollAgain=false,error=null;
  const supported=typeof createAudioContext==='function';
  function emit(){onState?.({active:!!userId,openCount:pending.size,enabled:audio?.state==='running',supported,error});}
  function stopSound(){if(source){try{source.stop();source.disconnect();}catch(_){}source=null;}}
@@ -23,14 +23,14 @@ export function createEmergencyAlarm({fetchCases,onState,createAudioContext,setI
   const requestEpoch=epoch,requestRevision=revision,requestUser=userId;
   const request=Promise.resolve().then(async()=>{try{const rows=await fetchCases(requestUser);if(requestEpoch!==epoch||requestUser!==userId)return;
    if(requestRevision!==revision){pollAgain=true;return;}
-   pending=new Set(rows.filter(row=>row.status==='open').map(row=>row.id));error=null;syncSound();
+   for(const row of rows)if(row.status==='resolved')closed.add(row.id);pending=new Set(rows.filter(row=>row.status==='open').map(row=>row.id));error=null;syncSound();
   }catch(_){if(requestEpoch===epoch){error='تعذر تحديث حالات الطوارئ؛ الإنذار يبقى للحالات المفتوحة';emit();}}
   finally{if(polling===request)polling=null;if(pollAgain&&requestEpoch===epoch){pollAgain=false;queueMicrotask(()=>refresh());}}});
   polling=request;return request;
  }
- function stop(){epoch++;revision++;userId=null;pending.clear();pollAgain=false;if(timer)clearIntervalFn(timer);timer=null;polling=null;error=null;stopSound();emit();}
+ function stop(){epoch++;revision++;userId=null;pending.clear();closed.clear();pollAgain=false;if(timer)clearIntervalFn(timer);timer=null;polling=null;error=null;stopSound();emit();}
  async function start(id){stop();userId=id;emit();timer=setIntervalFn(()=>refresh(),3000);await refresh();}
- function notify(id){if(!userId||!id)return;revision++;pending.add(id);syncSound();refresh();}
- function resolved(id){if(!userId)return;revision++;pending.delete(id);syncSound();refresh();}
+ function notify(id){if(!userId||!id||closed.has(id))return;revision++;pending.add(id);syncSound();refresh();}
+ function resolved(id){if(!userId)return;revision++;closed.add(id);pending.delete(id);syncSound();refresh();}
  return {start,stop,arm,refresh,notify,resolved};
 }

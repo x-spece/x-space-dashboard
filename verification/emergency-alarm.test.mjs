@@ -10,6 +10,7 @@ await alarm.arm();await alarm.refresh();assert.equal(starts,1);assert.equal(stop
 fail=true;await alarm.refresh();assert.equal(state.openCount,2);assert.equal(stops,0);fail=false;
 rows[0].status='resolved';alarm.resolved('one');await alarm.refresh();assert.equal(state.openCount,1);assert.equal(stops,0);
 rows[1].status='resolved';alarm.resolved('two');await alarm.refresh();assert.equal(state.openCount,0);assert.equal(stops,1);
+alarm.notify('two');await alarm.refresh();assert.equal(starts,1);assert.equal(state.openCount,0);
 rows=[{id:'new',status:'open'}];alarm.notify('new');await alarm.refresh();assert.equal(starts,2);assert.equal(state.openCount,1);
 alarm.stop();assert.equal(stops,2);assert.equal(state.active,false);assert.equal(clears,1);
 await alarm.start('admin');assert.equal(state.openCount,1);assert.equal(starts,3);assert.equal(intervals,2);
