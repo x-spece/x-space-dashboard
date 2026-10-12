@@ -1,3 +1,4 @@
+import { createEmergencyAlarm } from './emergency-alarm.js?v=1.6.21';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
 const db=createClient('https://typbkzwbrmkrfkfxjrgi.supabase.co','sb_publishable_Oto-5IRPHgWceHq_uzrsiw_JBBZbAOT',{auth:{storageKey:'taktooka-web-admin'}});
 const $=id=>document.getElementById(id);const status=text=>$('status').textContent=text;
@@ -110,8 +111,8 @@ const emergencySources={rider:'موقع الزبون',rider_last_known:'آخر �
 function emergencyMap(e){return Number.isFinite(e.lat)&&Number.isFinite(e.lng)?`https://maps.google.com/?q=${e.lat},${e.lng}`:null;}
 function emergencyText(e){return `SOS حالة طارئة 911\nرقم الرحلة: ${e.ride_id}\nالزبون: ${e.rider_name||'—'} · ${localPhone(e.rider_phone)}\nالكابتن: ${e.captain_name||'—'} · ${localPhone(e.captain_phone)}\nوقت البلاغ: ${dates(e.created_at)}\n${emergencySources[e.location_source]||e.location_source} · ${dates(e.location_at)}\n${emergencyMap(e)||'الموقع غير متاح'}`;}
 async function shareEmergency(e){const value=emergencyText(e);if(navigator.share){try{await navigator.share({title:'SOS حالة طارئة 911',text:value});return;}catch(err){if(err.name==='AbortError')return;}}await navigator.clipboard.writeText(value);status('تم نسخ البلاغ للمشاركة مع الطوارئ');}
-function emergencyActions(e){const actions=[button('مشاركة البلاغ مع الطوارئ',()=>shareEmergency(e)),button('نسخ البلاغ',async()=>{await navigator.clipboard.writeText(emergencyText(e));status('تم نسخ البلاغ')}),button('اتصال بـ911',()=>{window.location.href='tel:911'})];const map=emergencyMap(e);if(map)actions.unshift(button('فتح الموقع',()=>window.open(map,'_blank','noopener,noreferrer')));if(e.status==='open'&&canEdit('support'))actions.push(button('تم التعامل مع الحالة',async()=>{if(!confirm('تم التواصل والتعامل مع الحالة الطارئة؟'))return;await emergencyRpc('resolve',{id:e.id});await loadEmergencies();}));return actions;}
-async function loadEmergencies(){emergencies=await emergencyRpc('list');const list=$('emergencyRooms');list.replaceChildren();for(const e of emergencies){const row=record((e.status==='open'?'🔴 ':'')+'SOS حالة طارئة 911',emergencyText(e),emergencyActions(e));row.classList.add('emergency-card');list.append(row);}if(!emergencies.length)list.append(text('p','لا توجد بلاغات طوارئ'));}
+function emergencyActions(e){const actions=[button('مشاركة البلاغ مع الطوارئ',()=>shareEmergency(e)),button('نسخ البلاغ',async()=>{await navigator.clipboard.writeText(emergencyText(e));status('تم نسخ البلاغ')}),button('اتصال بـ911',()=>{window.location.href='tel:911'})];const map=emergencyMap(e);if(map)actions.unshift(button('فتح الموقع',()=>window.open(map,'_blank','noopener,noreferrer')));if(e.status==='open'&&canEdit('support'))actions.push(button('تم التعامل مع الحالة',async()=>{if(!confirm('تم التواصل والتعامل مع الحالة الطارئة؟'))return;await emergencyRpc('resolve',{id:e.id});emergencyAlarm.resolved(e.id);await loadEmergencies();}));return actions;}
+async function loadEmergencies(){emergencies=await emergencyRpc('list');const list=$('emergencyRooms');list.replaceChildren();for(const e of emergencies){const row=record((e.status==='open'?'🔴 ':'')+'SOS حالة طارئة 911',emergencyText(e),emergencyActions(e));row.classList.add('emergency-card');list.append(row);}if(!emergencies.length)list.append(text('p','لا توجد بلاغات طوارئ'));await emergencyAlarm.refresh();}
 async function openEmergency(id){showPage('support');await loadSupport();const e=emergencies.find(e=>e.id===id);if(e){const body=openDetail('SOS حالة طارئة 911');body.append(text('p',emergencyText(e)),...emergencyActions(e));}}
 let supportRooms=[], supportSearch='', supportFilter='all';
 async function loadSupport(){supportRooms=await manage('support_rooms');recovery=await manage('recovery');await loadEmergencies();renderSupport()}
@@ -239,19 +240,19 @@ async function initializeWebPush(){
   await noticeRpc('register',{token,platform:'web'});
   if(epoch!==notificationEpoch){await noticeRpc('unregister',{token}).catch(()=>{});return false;}
   webMessageUnsubscribe?.();webRegistration=registration;webMessaging=messaging;webToken=token;rememberPush({userId,token});
-  webMessageUnsubscribe=msgApi.onMessage(messaging,m=>{const d=m.data||{};if(d.recipient_id!==notificationUser)return;showDeviceNotice({id:d.notification_id,user_id:d.recipient_id,kind:d.kind,title:d.title||m.notification?.title,body:d.body||m.notification?.body,expires_at:d.expires_at,target:d}).catch(()=>{});refreshNotifications().catch(()=>{});});
+  webMessageUnsubscribe=msgApi.onMessage(messaging,m=>{const d=m.data||{};if(d.recipient_id!==notificationUser)return;if(d.kind==='emergency')emergencyAlarm.notify(d.emergency_id);showDeviceNotice({id:d.notification_id,user_id:d.recipient_id,kind:d.kind,title:d.title||m.notification?.title,body:d.body||m.notification?.body,expires_at:d.expires_at,target:d}).catch(()=>{});refreshNotifications().catch(()=>{});});
   pushState('إشعارات الخلفية مفعّلة ✓');return true;
  }catch(e){if(epoch===notificationEpoch){webMessaging=null;pushState('إعادة تفعيل إشعارات الخلفية',message(e));}return false;}})();
  pushInitializing=pending;try{return await pending}finally{if(pushInitializing===pending)pushInitializing=null;}
 }
 async function noticeRpc(action,data={}){const r=await db.rpc('tkt_notification_action',{p_action:action,p_data:data});if(r.error)throw r.error;return r.data;}
 async function refreshNotifications(){if(!notificationUser)return;const epoch=notificationEpoch,rows=await noticeRpc('list');if(epoch!==notificationEpoch)return;notificationRows=rows;const count=notificationRows.filter(n=>!n.read_at&&n.kind!=='offer_end').length;$('notifications').textContent=`الإشعارات${count?' ('+count+')':''}`;const urgent=notificationRows.filter(n=>!n.read_at&&n.kind==='emergency').length;$('notifications').classList.toggle('emergency-notification',urgent>0);if(urgent)$('notifications').textContent='🔴 SOS طوارئ ('+urgent+') · '+$('notifications').textContent;}
-async function startNotifications(){await stopNotifications();notificationUser=(await db.auth.getUser()).data.user?.id;if(!notificationUser)return;$('notifications').hidden=false;$('enableNotifications').hidden=false;await refreshNotifications();
- notificationChannel=db.channel('admin-notifications-'+notificationUser).on('postgres_changes',{event:'INSERT',schema:'public',table:'tkt_notifications',filter:'user_id=eq.'+notificationUser},async payload=>{if(!webMessaging)await showDeviceNotice(payload.new);await refreshNotifications();}).subscribe();
+async function startNotifications(){await stopNotifications();notificationUser=(await db.auth.getUser()).data.user?.id;if(!notificationUser)return;$('notifications').hidden=false;$('enableNotifications').hidden=false;if(canView('support'))await emergencyAlarm.start(notificationUser);await refreshNotifications();
+ notificationChannel=db.channel('admin-notifications-'+notificationUser).on('postgres_changes',{event:'INSERT',schema:'public',table:'tkt_notifications',filter:'user_id=eq.'+notificationUser},async payload=>{if(payload.new.kind==='emergency')emergencyAlarm.notify(payload.new.target?.emergency_id);if(!webMessaging)await showDeviceNotice(payload.new);await refreshNotifications();}).subscribe();
  notificationTimer=setInterval(()=>refreshNotifications().catch(()=>{}),15000);
  pushState('تفعيل إشعارات الجهاز');await initializeWebPush();
 }
-async function stopNotifications(unregister=false){notificationEpoch++;pushInitializing=null;clearInterval(notificationTimer);webMessageUnsubscribe?.();webMessageUnsubscribe=null;if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(unregister&&notificationUser){const saved=savedPush(),token=webToken||(saved?.userId===notificationUser?saved.token:null);if(token)await noticeRpc('unregister',{token});rememberPush(null);if(webRegistration){const notices=await webRegistration.getNotifications();notices.forEach(n=>n.close());}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;webRegistration=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
+async function stopNotifications(unregister=false){emergencyAlarm.stop();notificationEpoch++;pushInitializing=null;clearInterval(notificationTimer);webMessageUnsubscribe?.();webMessageUnsubscribe=null;if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(unregister&&notificationUser){const saved=savedPush(),token=webToken||(saved?.userId===notificationUser?saved.token:null);if(token)await noticeRpc('unregister',{token});rememberPush(null);if(webRegistration){const notices=await webRegistration.getNotifications();notices.forEach(n=>n.close());}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;webRegistration=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
 async function openNotification(n){await noticeRpc('read',{id:n.id});await refreshNotifications();const t=n.target||{};
  if(t.screen==='emergency'){await openEmergency(t.emergency_id);}
  else if(t.screen==='ride'){showPage('rides');await loadRides();await trackRide(t.ride_id);}
@@ -398,6 +399,17 @@ $('clearStaff').onclick=clearStaffForm;$('refreshStaff').onclick=()=>run(loadSta
 $('refreshInventory').onclick=()=>run(loadInventory);$('moreInventory').onclick=()=>run(()=>loadInventoryRows(true));$('inventorySearchForm').onsubmit=e=>{e.preventDefault();run(()=>loadInventoryRows());};
 function startInventoryRefresh(){clearInterval(inventoryTimer);inventoryTimer=setInterval(()=>{if(activePage==='inventory'&&!document.hidden&&!busy)refreshInventorySummary().catch(e=>status(message(e)));},15000);}
 
+const EmergencyAudioContext=globalThis.AudioContext||globalThis.webkitAudioContext;
+const emergencyAlarm=createEmergencyAlarm({
+ fetchCases:()=>emergencyRpc('list'),
+ createAudioContext:EmergencyAudioContext?()=>new EmergencyAudioContext():null,
+ onState:state=>{const control=$('enableEmergencySound');control.hidden=!state.active;control.disabled=!state.supported;control.classList.toggle('emergency-notification',state.openCount>0);control.textContent=!state.supported?'المتصفح لا يدعم صوت الطوارئ':(state.enabled?'صوت الطوارئ مفعّل':'تفعيل صوت الطوارئ')+(state.openCount?' · '+state.openCount+' حالة مفتوحة':'');control.title=state.error||'يستمر الصوت حتى التعامل مع كل الحالات المفتوحة';}
+});
+$('enableEmergencySound').onclick=()=>emergencyAlarm.arm();
+const unlockEmergencySound=event=>{if(event.isTrusted)emergencyAlarm.arm();};
+document.addEventListener('pointerdown',unlockEmergencySound,{capture:true});
+document.addEventListener('keydown',unlockEmergencySound,{capture:true});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)emergencyAlarm.refresh();});
 const {data:{session}}=await db.auth.getSession();if(session){await run(load);const id=new URL(window.location.href).searchParams.get('notice');if(id){const n=notificationRows.find(n=>n.id===id);if(n)await run(()=>openNotification(n));}}
 
 
@@ -489,5 +501,6 @@ async function loadWheel(more=false){
 }
 $('reloadWheel').onclick=()=>run(()=>loadWheel());$('moreWheelClaims').onclick=()=>run(()=>loadWheel(true));$('wheelClaimStatus').onchange=()=>run(()=>loadWheel());
 $('saveWheelState').onclick=()=>run(async()=>{await wheelRpc('configure',{enabled:$('wheelEnabled').checked});await loadWheel();status(wheelData.enabled?'العجلة مفعّلة':'العجلة متوقفة مؤقتاً')});
+
 
 
