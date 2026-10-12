@@ -47,13 +47,14 @@ const dates=value=>value?new Date(value).toLocaleString('ar-IQ',{timeZone:'Asia/
 const activeStates=['pending','accepted','arrived','in_progress'];
 let liveMap,liveLayers,liveChannel,liveTimer,liveEventTimer,lastLiveRefresh=0,refreshing=false,serverTime=Date.now(),captains=[];const liveCaptainMarkers=new Map();
 let dialogMap,dialogLayer,dialogMode=null,dialogKey=null,dialogEpoch=0,dialogRefreshing=false,chatSignature=null,finance={},favorites=[],security=[],audit=[],archives=[],recovery=[],openLedger=null;
+let profileLiveChannel,profileMarker,profileMotionFrame,profileStatusTimer,profileLiveData,profileServerOffset=0,profileFollow=true,profileCentered=false,profilePositionTime=-Infinity;
 function button(label,fn,cls='secondary'){const el=text('button',label);el.type='button';el.className=cls;const mutation=/^(تعديل|حفظ|تأكيد|تعيين|تجديد|حظر|رفع الحظر|فتح المحاولات|إيقاف|تفعيل|أرشفة|استرجاع|إلغاء الرحلة|حذف|شحن|تسديد|موافقة|رفض|تفعيل كابتن|إلغاء صلاحية|إرسال)/.test(label);const page=label==='تعيين كلمة سر'?'security':activePage;if(mutation&&!canEdit(page)){el.disabled=true;el.title='صلاحيتك في هذا القسم للعرض فقط';}el.onclick=()=>run(fn);return el}
 function facts(entries){const dl=text('dl','');dl.className='facts';for(const [label,value]of entries){const item=text('div','');item.append(text('dt',label),text('dd',value??'—'));dl.append(item)}return dl}
 function record(title,subtitle,controls=[]){const row=text('article','');row.className='record';const info=text('div','');info.append(text('strong',title),Array.isArray(subtitle)?facts(subtitle):text('p',subtitle));const actions=text('div','');actions.className='controls';actions.append(...controls);row.append(info,actions);return row}
 function empty(list){if(!list.childElementCount)list.append(Object.assign(text('p','ماكو بيانات حالياً'),{className:'empty'}))}
 function inputField(label,value,type='text'){const box=text('label',label),input=document.createElement('input');input.type=type;input.value=value??'';box.append(input);return {box,input}}
 function openDetail(title){closeDetail();$('detailTitle').textContent=title;$('detailBody').replaceChildren();$('detailDialog').showModal();return $('detailBody')}
-function closeDetail(){if(!$('chatScreen').hidden){$('chatScreen').hidden=true;document.body.classList.remove('chat-open');$('chatWorkspace').replaceChildren();}dialogEpoch++;dialogMode=null;dialogKey=null;chatSignature=null;if(dialogMap){dialogMap.remove();dialogMap=null;dialogLayer=null}if($('detailDialog').open)$('detailDialog').close()}
+function closeDetail(){stopCaptainProfile();if(!$('chatScreen').hidden){$('chatScreen').hidden=true;document.body.classList.remove('chat-open');$('chatWorkspace').replaceChildren();}dialogEpoch++;dialogMode=null;dialogKey=null;chatSignature=null;if(dialogMap){dialogMap.remove();dialogMap=null;dialogLayer=null}if($('detailDialog').open)$('detailDialog').close()}
 $('closeDialog').onclick=closeDetail;$('detailDialog').addEventListener('cancel',closeDetail);
 function mapFor(id){const m=L.map(id).setView([33.54844,44.41179],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(m);return m}
 function fresh(p){return !!p.location_at && Math.max(0,serverTime-Date.parse(p.location_at))<=15000}
@@ -73,7 +74,7 @@ async function loadOverview(){
 async function liveSnapshot(){const {data,error}=await db.rpc('tkt_admin_live');if(error)throw error;return data}
 function stopLive(){if(liveChannel){db.removeChannel(liveChannel);liveChannel=null}clearInterval(liveTimer);clearTimeout(liveEventTimer);liveEventTimer=null;liveTimer=null;$('liveStatus').textContent='غير متصل'}
 async function backgroundRefresh(){if(refreshing||busy||document.hidden||$('admin').hidden)return;refreshing=true;lastLiveRefresh=Date.now();try{
- if(dialogMode==='track')await updateTrack();else if(dialogMode==='chat')await updateChat();
+ if(dialogMode==='track')await updateTrack();else if(dialogMode==='chat')await updateChat();else if(dialogMode==='profile')await updateCaptainProfile();
  else if(['overview','rides','support','security','applications'].includes(activePage))await loadPage(activePage);
  if(!liveChannel)$('liveStatus').textContent='تحديث دوري';
 }catch(e){status(message(e));$('liveStatus').textContent='تعذّر التحديث'}finally{refreshing=false}}
@@ -298,12 +299,92 @@ function renderInventoryRows(){const list=$('inventoryRows');list.replaceChildre
  if(inventoryCategory.startsWith('rides_')){const actions=[];if(item.rider_id)actions.push(button('عرض ملف الزبون',()=>openUserProfile(item.rider_id)));if(item.captain_id)actions.push(button('عرض ملف الكابتن',()=>openUserProfile(item.captain_id)));if(canView('rides'))actions.push(button('تفاصيل الرحلة',()=>trackRide(item.id)));list.append(record(`${item.pickup_name||'الانطلاق'} ← ${item.destination_name||'الوصول'}`,[['مرجع الرحلة',item.id],['الحالة',stateNames[item.status]||item.status],['الكروة',money(item.fare||0)],['الزبون',`${item.rider_name||'—'} · ${localPhone(item.rider_phone)}`],['الكابتن',`${item.captain_name||'لم يُحدد'} · ${localPhone(item.captain_phone)}`],['تاريخ الرحلة',dates(item.created_at)]],actions));}
  else{const entries=[['الهاتف',localPhone(item.phone)],['نوع الحساب',item.vehicle?'مركبة / كابتن':'زبون'],['الرصيد في الشركة',money(item.balance)],['حالة الحساب',item.archived?'مؤرشف':item.blocked?'محظور':'فعال']];if(item.vehicle)entries.push(['الاشتراك',{never:'غير مشترك',active:'مشترك',expired:'منتهي'}[item.subscription_state]],['نهاية الاشتراك',dates(item.expires_at)]);if(item.application_status)entries.push(['طلب المركبة',applicationNames[item.application_status]||item.application_status]);if(item.chassis)entries.push(['رقم الشاصي',item.chassis]);if(item.reason&&item.application_status==='changes_required')entries.push(['البيانات المطلوبة',item.reason]);list.append(record(item.full_name||item.name||'بدون اسم',entries,[button('عرض الملف الشخصي',()=>openUserProfile(item.user_id))]));}
  }empty(list);}
-async function openUserProfile(userId){const result=await dashboardRpc('tkt_inventory','profile',{user_id:userId}),p=result.profile;const body=openDetail('الملف الشخصي');const heading=text('div','');heading.className='profile-heading';const avatar=text('div',(p.full_name||p.name||'؟').slice(0,1));avatar.className='profile-avatar profile-initial';heading.append(avatar,text('h2',p.full_name||p.name||'بدون اسم'));body.append(heading);if(p.avatar_path){try{const r=await db.storage.from('profile-photos').createSignedUrl(p.avatar_path,300);if(r.data?.signedUrl){const img=document.createElement('img');img.className='profile-avatar';img.src=r.data.signedUrl;img.alt='الصورة الشخصية';avatar.replaceWith(img);}}catch(_){}}
+async function openUserProfile(userId){const result=await dashboardRpc('tkt_inventory','profile',{user_id:userId}),p=result.profile;const body=openDetail('الملف الشخصي'),epoch=dialogEpoch;const heading=text('div','');heading.className='profile-heading';const avatar=text('div',(p.full_name||p.name||'؟').slice(0,1));avatar.className='profile-avatar profile-initial';heading.append(avatar,text('h2',p.full_name||p.name||'بدون اسم'));body.append(heading);if(p.avatar_path){try{const r=await db.storage.from('profile-photos').createSignedUrl(p.avatar_path,300);if(r.data?.signedUrl){const img=document.createElement('img');img.className='profile-avatar';img.src=r.data.signedUrl;img.alt='الصورة الشخصية';avatar.replaceWith(img);}}catch(_){}}
+ if(epoch!==dialogEpoch)return;
  const summary=text('div','');summary.className='profile-summary';for(const [label,value]of [['الرحلات المكتملة',result.rides.completed],['الرحلات الملغية',result.rides.cancelled],['الرحلات الجارية',result.rides.running]]){const tile=text('div',label);tile.prepend(text('strong',new Intl.NumberFormat('en-US').format(value)));summary.append(tile);}body.append(summary);
  const identity=text('section','');identity.className='profile-section';identity.append(text('h3','بيانات الحساب'),facts([['الاسم',p.name],['رقم الهاتف',localPhone(p.phone)],['نوع الحساب',p.vehicle?'كابتن / مركبة':'زبون'],['الحالة',p.archived?'مؤرشف':p.blocked?'محظور':'فعال'],['تاريخ التسجيل',dates(p.created_at)],['معرّف الحساب',p.user_id]]));const contact=text('div','');contact.className='controls';for(const [label,url]of [['اتصال','tel:'+p.phone],['واتساب','https://wa.me/'+String(p.phone).replace(/\D/g,'')]]){const a=text('a',label);a.href=url;a.target='_blank';a.rel='noopener';a.className='profile-contact';contact.append(a);}identity.append(contact);body.append(identity);
  if(p.vehicle||p.application_status){const vehicle=text('section','');vehicle.className='profile-section';vehicle.append(text('h3','المركبة والاشتراك'),facts([['الاسم الثلاثي',p.full_name],['رقم الشاصي',p.chassis],['اللون',p.color],['الموديل',p.model],['المحافظة',p.province],['المنطقة',p.area],['حالة تسجيل المركبة',applicationNames[p.application_status]||p.application_status||'—'],['الاشتراك',{never:'غير مشترك',active:'فعال',expired:'منتهي'}[p.subscription_state]],['نهاية الاشتراك',dates(p.expires_at)],['المطلوب تعديله',p.reason]]));body.append(vehicle);}
  if(canView('inventory')||canView('finance')){const wallet=text('section','');wallet.className='profile-section';wallet.append(text('h3',p.vehicle?'مستحقات الكابتن':'محفظة الزبون'),text('strong',money(p.balance||0)));if(canView('finance'))wallet.append(button('عرض كشف الحساب',()=>ledger(p)));if(result.payments?.length){wallet.append(text('h3','آخر مدفوعات الاشتراك'));for(const payment of result.payments)wallet.append(text('p',`${money(payment.amount)} · ${dates(payment.created_at)} · حتى ${dates(payment.expires_at)}`));}body.append(wallet);}
+ if(p.vehicle||p.application_status)startCaptainProfile(userId,body,epoch);
 }
+function stopCaptainProfile(){
+ if(profileLiveChannel){db.removeChannel(profileLiveChannel);profileLiveChannel=null;}
+ if(profileMotionFrame)cancelAnimationFrame(profileMotionFrame);
+ clearInterval(profileStatusTimer);profileStatusTimer=null;profileMarker=null;profileLiveData=null;profileCentered=false;profilePositionTime=-Infinity;
+}
+async function captainProfileRpc(userId,documents=false){
+ const result=await dashboardRpc('tkt_inventory','profile',{user_id:userId}),p=result.profile;
+ const allowed=Boolean(dashboardAccess?.owner||dashboardAccess?.permissions?.applications?.view);
+ let images={};
+ if(documents&&allowed){const {data,error}=await db.from('tkt_captain_applications').select('documents').eq('user_id',userId).maybeSingle();if(error)throw error;for(const key of ['id_front','id_back'])if(data?.documents?.[key])images[key]=data.documents[key];}
+ return {captain:{user_id:p.user_id,name:p.name,captain:p.captain,online:p.online,lat:p.lat,lng:p.lng,location_at:p.location_at},documents:images,documents_allowed:allowed,server_now:new Date().toISOString()};
+}
+function captainProfileStatus(){
+ const el=$('captainProfileStatus'),p=profileLiveData;if(!el||!p)return;
+ const timestamp=Date.parse(p.location_at),age=Number.isFinite(timestamp)?Math.max(0,Math.floor((Date.now()+profileServerOffset-timestamp)/1000)):null;
+ const hasPoint=Number.isFinite(p.lat)&&Number.isFinite(p.lng)&&Number.isFinite(timestamp);
+ const live=hasPoint&&p.online&&age<=15;
+ el.className='captain-location-status'+(live?' live':' stale');
+ el.textContent=!hasPoint?'لم يصل موقع الكابتن بعد':!p.online?'الكابتن غير متصل · آخر موقع قبل '+age+' ثانية':live?'● موقع مباشر · آخر تحديث قبل '+age+' ثانية':'الموقع متأخر · آخر تحديث قبل '+age+' ثانية';
+ $('captainProfileLocationTime').textContent='وقت الموقع: '+dates(p.location_at);
+}
+function moveCaptainProfileMarker(point,epoch){
+ if(profileMotionFrame)cancelAnimationFrame(profileMotionFrame);
+ const from=profileMarker.getLatLng(),started=performance.now();
+ const frame=()=>{if(epoch!==dialogEpoch||!profileMarker)return;const progress=Math.min(1,(performance.now()-started)/700);profileMarker.setLatLng([from.lat+(point[0]-from.lat)*progress,from.lng+(point[1]-from.lng)*progress]);if(progress<1)profileMotionFrame=requestAnimationFrame(frame);else profileMotionFrame=null;};
+ profileMotionFrame=requestAnimationFrame(frame);
+}
+function applyCaptainProfileLocation(result,epoch){
+ if(epoch!==dialogEpoch||dialogMode!=='profile')return;
+ const p=result.captain;if(!p)return;
+ const received=Date.parse(p.location_at);
+ if(Number.isFinite(received)&&received<profilePositionTime)return;
+ profileLiveData=p;profileServerOffset=Date.parse(result.server_now)-Date.now();captainProfileStatus();
+ if(!Number.isFinite(p.lat)||!Number.isFinite(p.lng)||!Number.isFinite(received))return;
+ const point=[p.lat,p.lng],changed=received>profilePositionTime;
+ if(!profileMarker){profileMarker=L.marker(point,{icon:L.divIcon({className:'',html:'<div class="captain-profile-marker">🛺</div>',iconSize:[40,40],iconAnchor:[20,20]})}).addTo(dialogMap);profileMarker.bindPopup(text('span',p.name||'الكابتن'));}
+ else if(changed)moveCaptainProfileMarker(point,epoch);
+ profilePositionTime=received;
+ if(!profileCentered){dialogMap.setView(point,17);profileCentered=true;}
+ else if(profileFollow&&changed)dialogMap.panTo(point,{animate:true,duration:0.7});
+}
+async function updateCaptainProfile(){
+ if(dialogRefreshing||dialogMode!=='profile'||!dialogMap)return;
+ dialogRefreshing=true;const epoch=dialogEpoch,userId=dialogKey;
+ try{const result=await captainProfileRpc(userId);applyCaptainProfileLocation(result,epoch);}
+ catch(e){if(epoch===dialogEpoch&&$('captainProfileStatus')){$('captainProfileStatus').className='captain-location-status stale';$('captainProfileStatus').textContent='تعذر تحديث الموقع؛ آخر تحديث: '+dates(profileLiveData?.location_at);}}
+ finally{dialogRefreshing=false;}
+}
+async function loadCaptainIdentity(userId,gallery,epoch){
+ gallery.replaceChildren(text('p','جاري تحميل صور الجنسية…'));
+ try{
+  const result=await captainProfileRpc(userId,true);if(epoch!==dialogEpoch)return;
+  applyCaptainProfileLocation(result,epoch);gallery.replaceChildren();
+  if(!result.documents_allowed){gallery.append(text('p','عرض صور الجنسية يحتاج صلاحية تسجيل المركبات'));return;}
+  await Promise.all([['id_front','وجه الجنسية'],['id_back','خلف الجنسية']].map(async([slot,label])=>{
+   const card=text('figure','');card.append(text('figcaption',label));gallery.append(card);const path=result.documents?.[slot];
+   if(!path){card.append(text('p','لم تُرفع هذه الصورة'));return;}
+   try{const {data,error}=await db.storage.from('captain-documents').createSignedUrl(path,600);if(epoch!==dialogEpoch)return;
+    if(error||!data?.signedUrl)throw error||new Error('DOCUMENT_UNAVAILABLE');
+    const link=text('a','');link.href=data.signedUrl;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','تكبير '+label);
+    const img=document.createElement('img');img.src=data.signedUrl;img.alt=label;img.referrerPolicy='no-referrer';img.loading='lazy';img.onerror=()=>{if(epoch===dialogEpoch){link.replaceWith(text('p','تعذر تحميل الصورة؛ اضغط تحديث الصور'));}};link.append(img);card.append(link,text('small','اضغط الصورة للتكبير'));
+   }catch(_){if(epoch===dialogEpoch)card.append(text('p','تعذر عرض الصورة؛ اضغط تحديث الصور'));}
+  }));
+ }catch(_){if(epoch===dialogEpoch)gallery.replaceChildren(text('p','تعذر تحميل المستمسكات؛ اضغط تحديث الصور'));}
+}
+function startCaptainProfile(userId,body,epoch){
+ dialogMode='profile';dialogKey=userId;profileFollow=true;
+ const section=text('section','');section.className='profile-section captain-live-section';section.append(text('h3','موقع الكابتن مباشر'));
+ const controls=text('div','');controls.className='controls';const follow=text('label',''),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=true;checkbox.onchange=()=>{profileFollow=checkbox.checked;if(profileFollow&&profileMarker)dialogMap.panTo(profileMarker.getLatLng());};follow.append(checkbox,text('span','متابعة الكابتن على الخريطة'));controls.append(follow,button('تحديث الموقع',updateCaptainProfile));section.append(controls);
+ section.append(Object.assign(text('p','بانتظار موقع الكابتن…'),{id:'captainProfileStatus',className:'captain-location-status stale'}),Object.assign(text('p',''),{id:'captainProfileLocationTime'}),Object.assign(text('div',''),{id:'captainProfileMap',className:'admin-map captain-profile-map'}));body.append(section);
+ dialogMap=mapFor('captainProfileMap');dialogMap.on('dragstart',()=>{profileFollow=false;checkbox.checked=false;});setTimeout(()=>{if(epoch===dialogEpoch)dialogMap?.invalidateSize();},0);
+ profileLiveChannel=db.channel('captain-profile-'+userId+'-'+epoch).on('postgres_changes',{event:'UPDATE',schema:'public',table:'tkt_profiles',filter:'user_id=eq.'+userId},()=>{if(epoch===dialogEpoch)scheduleLiveRefresh();}).subscribe();
+ profileStatusTimer=setInterval(captainProfileStatus,1000);
+ const docs=text('section','');docs.className='profile-section';const gallery=text('div','');gallery.className='application-documents captain-identity-gallery';docs.append(text('h3','صور الجنسية'),button('تحديث الصور',()=>loadCaptainIdentity(userId,gallery,epoch)),gallery);body.append(docs);
+ unawaitedCaptainProfile(updateCaptainProfile());unawaitedCaptainProfile(loadCaptainIdentity(userId,gallery,epoch));
+}
+function unawaitedCaptainProfile(promise){promise.catch(()=>{});}
+
 function permissionEditor(value={}){const table=text('table','');table.className='permission-table';const head=text('thead',''),tr=text('tr','');['القسم','عرض','تعديل'].forEach(label=>tr.append(text('th',label)));head.append(tr);table.append(head);const tbody=text('tbody','');for(const [key,label]of permissionPages){const row=text('tr','');row.append(text('td',label));const inputs={};for(const kind of ['view','edit']){const td=text('td',''),input=document.createElement('input');input.type='checkbox';input.dataset.permission=key;input.dataset.access=kind;input.checked=value[key]?.[kind]===true;input.setAttribute('aria-label',`${kind==='view'?'عرض':'تعديل'} ${label}`);if(key==='inventory'&&kind==='edit'){input.disabled=true;input.checked=false;}inputs[kind]=input;td.append(input);row.append(td);}inputs.view.onchange=()=>{if(!inputs.view.checked)inputs.edit.checked=false;};inputs.edit.onchange=()=>{if(inputs.edit.checked)inputs.view.checked=true;};tbody.append(row);}table.append(tbody);$('staffPermissions').replaceChildren(table);}
 function selectedStaffPermissions(){const result={};for(const [key]of permissionPages){const view=document.querySelector(`[data-permission="${key}"][data-access="view"]`).checked,edit=document.querySelector(`[data-permission="${key}"][data-access="edit"]`).checked;if(view)result[key]={view,edit};}if(!Object.keys(result).length)throw new Error('حدد للموظف صلاحية عرض قسم واحد على الأقل');return result;}
 function clearStaffForm(){editingStaff=null;$('staffForm').reset();$('staffPhone').disabled=false;$('staffPasswordLabel').hidden=false;$('staffPassword').required=true;$('staffFormTitle').textContent='إضافة موظف جديد';$('saveStaff').textContent='إنشاء حساب الموظف';$('staffFormStatus').textContent='';permissionEditor();}
@@ -408,4 +489,5 @@ async function loadWheel(more=false){
 }
 $('reloadWheel').onclick=()=>run(()=>loadWheel());$('moreWheelClaims').onclick=()=>run(()=>loadWheel(true));$('wheelClaimStatus').onchange=()=>run(()=>loadWheel());
 $('saveWheelState').onclick=()=>run(async()=>{await wheelRpc('configure',{enabled:$('wheelEnabled').checked});await loadWheel();status(wheelData.enabled?'العجلة مفعّلة':'العجلة متوقفة مؤقتاً')});
+
 
