@@ -1,5 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.95.3';
-import {normalize,readPlaces,rankPlaces} from './places.ts';
+import {normalize,readPlaces,rankPlaces,matchQuality,localBounds,queryPrefix} from './places.ts';
 const cors = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const reply = (data: unknown,status=200) => new Response(JSON.stringify(data),{status,headers:{...cors,'Content-Type':'application/json'}});
 const calls = new Map<string,number[]>();
@@ -34,7 +34,16 @@ Deno.serve(async (req: Request) => {
   };
   const groups = await Promise.all([get(mapbox,'mapbox'),get(photon,'photon')]);
   if (!succeeded) return reply({error:'SEARCH_UNAVAILABLE'},503);
-  const results = rankPlaces(groups.flat(),query,point);
+  const rows = groups.flat();
+  const prefix=queryPrefix(query);
+  if(prefix && !rows.some(row=>matchQuality(row,query)>=.7)) {
+   const local=new URL(photon);
+   local.searchParams.set('q',prefix);
+   local.searchParams.set('bbox',localBounds(point));
+   local.searchParams.set('limit','20');
+   rows.push(...await get(local,'photon'));
+  }
+  const results = rankPlaces(rows,query,point);
   if (results.length) {if(cache.size>=250) cache.delete(cache.keys().next().value!);cache.set(key,{at:now,results});}
   return reply({results});
  } catch {return reply({error:'SEARCH_UNAVAILABLE'},503);}
