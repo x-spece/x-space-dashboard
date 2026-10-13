@@ -1,3 +1,4 @@
+export const maxPinSnapMeters = 150;
 export function readSnap(data: any, point: number[]): {point: number[]; name: string} {
  const location = data?.waypoints?.[0]?.location;
  if (data?.code !== 'Ok' || !Array.isArray(location) || location.length !== 2 || !location.every((n: unknown) => typeof n === 'number' && Number.isFinite(n))) throw new Error('NO_NEARBY_ROAD');
@@ -5,7 +6,7 @@ export function readSnap(data: any, point: number[]): {point: number[]; name: st
  const dlat = (location[1]-point[0])*rad, dlng = (location[0]-point[1])*rad;
  const a = Math.sin(dlat/2)**2 + Math.cos(point[0]*rad)*Math.cos(location[1]*rad)*Math.sin(dlng/2)**2;
  const distance = 6371000*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
- if (distance > 75) throw new Error('NO_NEARBY_ROAD');
+ if (distance > maxPinSnapMeters) throw new Error('NO_NEARBY_ROAD');
  const routes = data.routes;
  if (!Array.isArray(routes) || !routes.length) throw new Error('NO_NEARBY_ROAD');
  for (const route of routes) {

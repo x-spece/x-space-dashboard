@@ -1,5 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.95.3';
-import {readSnap} from './snap.ts';
+import {readSnap,maxPinSnapMeters} from './snap.ts';
 import {addressParts} from './address.ts';
 const cors = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const reply = (data: unknown, status=200) => new Response(JSON.stringify(data), {status, headers: {...cors,'Content-Type':'application/json'}});
@@ -47,12 +47,15 @@ Deno.serve(async (req: Request) => {
     return reply({point,...await resolveAddress(point,road)});
   }
   const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/driving/${point[1]},${point[0]};${point[1]},${point[0]+0.00001}`);
-  url.search = new URLSearchParams({access_token:config.mapbox_token,radiuses:'75;75',overview:'false',steps:'true',exclude:'motorway,toll,ferry',alternatives:'false'}).toString();
+  url.search = new URLSearchParams({access_token:config.mapbox_token,radiuses:`${maxPinSnapMeters};${maxPinSnapMeters}`,overview:'false',steps:'true',exclude:'motorway,toll,ferry',alternatives:'false'}).toString();
   const response = await fetch(url,{signal:AbortSignal.timeout(5000)});
   if (!response.ok) throw new Error('PIN_UNAVAILABLE');
   const snapped = readSnap(await response.json(), point);
   const street = snapped.name;
   if (fast) return reply({...snapped,street});
   return reply({...snapped,...await resolveAddress(snapped.point,street)});
- } catch { return reply({error:'PIN_UNAVAILABLE'},503); }
+ } catch (error) {
+   const code=error instanceof Error && error.message==='NO_NEARBY_ROAD' ? 'NO_NEARBY_ROAD' : 'PIN_UNAVAILABLE';
+   return reply({error:code},code==='NO_NEARBY_ROAD'?422:503);
+ }
 });
