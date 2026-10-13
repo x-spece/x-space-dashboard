@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import {createRenderCache} from '../dist/performance.js';
 
 const file=process.argv[2]||new URL('../dist/app.js',import.meta.url);
 const source=fs.readFileSync(file,'utf8');
@@ -18,7 +19,7 @@ const elements=new Map();
 function element(id){if(!elements.has(id))elements.set(id,{children:[],textContent:'',replaceChildren(...nodes){this.children=nodes;},append(node){this.children.push(node);}});return elements.get(id);}
 const drawn=[];
 const layer=()=>({bindPopup(){return this;},addTo(){return this;},getBounds(){return {isValid:()=>true,getSouthWest:()=>[33.5,44.4],getNorthEast:()=>[33.51,44.41]};}});
-const context=vm.createContext({serverTime:now,Date,Number,String,Math,Set,
+const context=vm.createContext({renderCache:createRenderCache(),rideMovingMarker:null,serverTime:now,Date,Number,String,Math,Set,
  stateNames:{in_progress:'الرحلة جارية',completed:'مكتملة',cancelled:'ملغية'},
  money:n=>new Intl.NumberFormat('en-US').format(n)+' د.ع',dates:v=>v||'—',
  rides:[ride,{id:'one-way',status:'completed',fare:1000}],activeStates:['in_progress'],
@@ -58,4 +59,6 @@ assert.equal(drawn.length,2);
 assert.equal(drawn[1].options.style.color,'#2878c8');
 assert.equal(new Map(element('rideTrackInfo').children[0]).get('كروة الإياب'),'1,000 د.ع');
 assert.match(element('rideTrackLegend').textContent,/مسار الرجعة/);
-console.log('24 round-trip dashboard checks passed:',String(file));
+await context.updateTrack(false);
+assert.equal(drawn.length,2,'unchanged route geometry should not be redrawn');
+console.log('25 round-trip dashboard checks passed:',String(file));
