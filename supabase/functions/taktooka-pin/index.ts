@@ -4,6 +4,7 @@ import {addressParts} from './address.ts';
 const cors = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const reply = (data: unknown, status=200) => new Response(JSON.stringify(data), {status, headers: {...cors,'Content-Type':'application/json'}});
 const calls = new Map<string, number[]>();
+const addressCache = new Map<string,{at:number,result:ReturnType<typeof addressParts>}>();
 Deno.serve(async (req: Request) => {
  if (req.method === 'OPTIONS') return new Response('ok', {headers: cors});
  if (req.method !== 'POST') return reply({error:'METHOD_NOT_ALLOWED'},405);
@@ -25,13 +26,21 @@ Deno.serve(async (req: Request) => {
   if (calls.size > 2000) for (const [id,times] of calls) if (times.at(-1)! < now-60000) calls.delete(id);
   if (configError || !config?.mapbox_token) throw new Error('PIN_UNAVAILABLE');
   async function resolveAddress(location: number[], road = '') {
+    const key=`${location[0].toFixed(5)}|${location[1].toFixed(5)}|${road}`;
+    const saved=addressCache.get(key);
+    if(saved && Date.now()-saved.at<(saved.result.address_complete ? 120000 : 10000)) return saved.result;
     const reverse = new URL('https://api.mapbox.com/search/geocode/v6/reverse');
     reverse.search = new URLSearchParams({access_token:config.mapbox_token,longitude:String(location[1]),latitude:String(location[0]),language:'ar',types:'street,neighborhood,locality,place,district,region',permanent:'true'}).toString();
     const nearby = new URL(`https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${location[1]},${location[0]}.json`);
-    nearby.search = new URLSearchParams({access_token:config.mapbox_token,radius:'120',limit:'30',layers:'poi_label'}).toString();
-    const get = (url: URL) => fetch(url,{signal:AbortSignal.timeout(2500)}).then(r => r.ok ? r.json() : null).catch(() => null);
-    const [area, landmarks] = await Promise.all([get(reverse),get(nearby)]);
-    return addressParts(area, road, landmarks, location);
+    nearby.search = new URLSearchParams({access_token:config.mapbox_token,radius:'500',limit:'50',layers:'poi_label,road'}).toString();
+    const get = (url: URL) => fetch(url,{headers:{'Accept-Language':'ar'},signal:AbortSignal.timeout(2500)}).then(r => r.ok ? r.json() : null).catch(() => null);
+    const local = new URL('/reverse',Deno.env.get('PHOTON_URL') || 'https://photon.komoot.io');
+    local.search = new URLSearchParams({lat:String(location[0]),lon:String(location[1]),limit:'10',radius:'1'}).toString();
+    const [area, landmarks, district] = await Promise.all([get(reverse),get(nearby),get(local)]);
+    const result=addressParts(area, road, landmarks, location, district);
+    if(addressCache.size>=160) addressCache.delete(addressCache.keys().next().value!);
+    addressCache.set(key,{at:Date.now(),result});
+    return result;
   }
   if (addressOnly) {
     const road = typeof body.street === 'string' ? body.street.slice(0,100) : '';
