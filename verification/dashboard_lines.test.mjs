@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {displayClock} from '../dist/display-format.js';
-const source=readFileSync(new URL('../dist/app.js',import.meta.url),'utf8');
+const source=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
 const start=source.indexOf('function lineFacts('),end=source.indexOf('function renderLines(',start);
 const context=vm.createContext({displayClock,lineWeek:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],lineStateNames:{accepted:'تم قبول الخط'},linePayNames:{not_due:'الدفع بنهاية مدة الخط'},dates:v=>v||'—',money:n=>`${n} د.ع`});
 vm.runInContext(source.slice(start,end),context);

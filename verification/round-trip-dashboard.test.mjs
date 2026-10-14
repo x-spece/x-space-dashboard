@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {createRenderCache} from '../dist/performance.js';
 
-const file=process.argv[2]||new URL('../dist/app.js',import.meta.url);
+const file=process.argv[2]||new URL('../src/app.js',import.meta.url);
 const source=fs.readFileSync(file,'utf8');
 const helpers=source.slice(source.indexOf('function tripKind('),source.indexOf('async function pricingRpc('));
 const listCode=source.slice(source.indexOf('function renderRides('),source.indexOf('async function trackRide('));
