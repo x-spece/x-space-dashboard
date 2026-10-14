@@ -1,7 +1,5 @@
-Warning: truncated output (original token count: 30661)
-Total output lines: 620
-
-import {createCouponRewards} from './coupon-rewards.js?v=1.6.64';
+import {createCouponCardPrinter} from './coupon-card-printer.js?v=1.6.65';
+import {createCouponRewards} from './coupon-rewards.js?v=1.6.65';
 import {createCompanyPage} from './company-performance.js?v=1.6.61';
 import {createRenderCache, createRequestTracker, debounceTask} from './performance.js?v=1.6.42';
 const renderCache=createRenderCache(), requestTracker=createRequestTracker();
@@ -14,7 +12,7 @@ const $=id=>document.getElementById(id);const status=text=>$('status').textConte
 const governorates=['بغداد','البصرة','نينوى','أربيل','السليمانية','دهوك','حلبجة','كركوك','ديالى','الأنبار','صلاح الدين','بابل','كربلاء','النجف','واسط','القادسية','ذي قار','ميسان','المثنى'];
 for(const name of governorates){const option=document.createElement('option');option.textContent=name;$('governorate').append(option)}
 let zones=[],settings={},map,overlay,points=[],drawing=false,editing=null,busy=false;
-function message(error){if(String(error?.message).includes('ADMIN_REQUIRED'))return 'هذا الحساب ليس حساب إدارة';if(String(error?.message).includes('SEARCH_IN_PROGRESS'))return 'توجد طلبات قيد البحث؛ انتظر انتهاءها ثم احفظ';if(String(error?.message).includes('PERMISSION_DENIED'))return 'ما عندك صلاحية لهذا الإجراء';if(String(error?.message).includes('OWNER_REQUIRED'))return 'إدارة الموظفين متاحة للمالك فقط';if(String(error?.message).includes('COUPON_TYPE_LOCKED'))return 'نوع الكود ثابت بعد تفعيله من زبون؛ أنشئ كودًا جديدًا';if(String(error?.message).includes('COUPON_USE_LIMIT'))return 'عدد الاستخدامات أقل من الاستخدامات المسجلة';if(String(error?.message).includes('INVALID_EXPIRY'))return 'حدد تاريخ صلاحية بالمستقبل';if(String(error?.message).includes('coupons_amount_check'))return 'مبلغ الخصم من 250 إلى 100,000 دينار';if(String(error?.message).includes('PHONE_EXISTS'))return 'رقم الهاتف مستخدم بحساب آخر';return error?.message||'تعذر تنفيذ العملية، حاول مرة ثانية'}
+function message(error){if(String(error?.message).includes('ADMIN_REQUIRED'))return 'هذا الحساب ليس حساب إدارة';if(String(error?.message).includes('SEARCH_IN_PROGRESS'))return 'توجد طلبات قيد البحث؛ انتظر انتهاءها ثم احفظ';if(String(error?.message).includes('PERMISSION_DENIED'))return 'ما عندك صلاحية لهذا الإجراء';if(String(error?.message).includes('OWNER_REQUIRED'))return 'إدارة الموظفين متاحة للمالك فقط';if(String(error?.message).includes('coupon_printed_single_use'))return 'الكارت المطبوع ثابت: رحلة مجانية واحدة واستخدام واحد';if(String(error?.message).includes('INVALID_CARD_BATCH'))return 'حدد من 1 إلى 500 كارت وصلاحية بالمستقبل';if(String(error?.message).includes('COUPON_TYPE_LOCKED'))return 'نوع الكود ثابت بعد تفعيله من زبون؛ أنشئ كودًا جديدًا';if(String(error?.message).includes('COUPON_USE_LIMIT'))return 'عدد الاستخدامات أقل من الاستخدامات المسجلة';if(String(error?.message).includes('INVALID_EXPIRY'))return 'حدد تاريخ صلاحية بالمستقبل';if(String(error?.message).includes('coupons_amount_check'))return 'مبلغ الخصم من 250 إلى 100,000 دينار';if(String(error?.message).includes('PHONE_EXISTS'))return 'رقم الهاتف مستخدم بحساب آخر';return error?.message||'تعذر تنفيذ العملية، حاول مرة ثانية'}
 async function rpc(action,data={}){const {data:result,error}=await db.rpc('tkt_dispatch',{p_action:action,p_data:data});if(error)throw error;return result}
 function render(){ $('zones').replaceChildren();overlay.clearLayers();for(const zone of zones){const row=document.createElement('div');row.className='zone';const name=document.createElement('strong');name.textContent=zone.name;const controls=document.createElement('div');const edit=document.createElement('button');edit.textContent='تعديل الحدود';edit.onclick=()=>{editing=zone.id;$('name').value=zone.name;points=zone.geometry.coordinates[0].slice(0,-1).map(([lng,lat])=>[lat,lng]);drawing=true;preview();map.fitBounds(points);status('تعديل المنطقة: اضغط على الخريطة لإضافة نقاط، ثم اعتماد المنطقة')};const remove=document.createElement('button');remove.className='secondary';remove.textContent='حذف';remove.onclick=()=>{if(confirm('إزالة هذه المنطقة من التغطية؟')){zones=zones.filter(z=>z.id!==zone.id);render();status('التغيير لم يُحفظ بعد')}};controls.append(edit,remove);row.append(name,controls);$('zones').append(row);L.polygon(zone.geometry.coordinates[0].map(([lng,lat])=>[lat,lng]),{color:'#d91e27',weight:2}).addTo(overlay)}}
 let draft;function preview(){if(draft)map.removeLayer(draft);draft=L.polygon(points,{color:'#e5a600',dashArray:'5 5'}).addTo(map);$('hint').textContent=`عدد نقاط الحدود: ${points.length}`}
@@ -269,7 +267,26 @@ async function applicationDetail(a){
   if(error||!data?.signedUrl){card.append(text('p','تعذّر عرض الصورة. أغلق التفاصيل وافتحها مجدداً.'));continue}
   const link=document.createElement('a');link.href=data.signedUrl;link.target='_blank';link.rel='noopener noreferrer';const img=document.createElement('img');img.src=data.signedUrl;img.alt=label;img.referrerPolicy='no-referrer';link.append(img);card.append(link);
  }
- if(a…661 tokens truncated….add(n.id);
+ if(a.status!=='pending')return;
+ const form=document.createElement('form'),label=text('label','التعديل المطلوب عند رفض الطلب'),reason=document.createElement('textarea');reason.id='applicationReason';reason.maxLength=2000;reason.rows=3;reason.placeholder='اكتب السبب وما يحتاج الكابتن تعديله';label.append(reason);form.append(label);
+ async function review(decision){const why=reason.value.trim();if(decision==='changes_required'&&why.length<3){reason.focus();throw new Error('اكتب سبب الرفض والتعديل المطلوب')}if(decision==='approved'&&!confirm('الموافقة على المستمسكات وتفعيل حساب الكابتن؟'))return;await applicationRpc('review',{user_id:a.user_id,revision:a.revision,decision,reason:why});closeDetail();await loadApplications();status(decision==='approved'?'تمت الموافقة وتفعيل حساب الكابتن':'تم إرسال سبب التعديل للكابتن')}
+ form.onsubmit=e=>{e.preventDefault();run(()=>review('changes_required'))};const actions=text('div','');actions.className='controls';actions.append(button('موافقة وتفعيل الكابتن',()=>review('approved'),'approve'),button('رفض لغرض التعديل',()=>review('changes_required'),'danger'));form.append(actions);body.append(form);
+}
+$('refreshApplications').onclick=()=>run(()=>loadApplications());$('moreApplications').onclick=()=>run(()=>loadApplications(true));$('applicationStatus').onchange=()=>run(()=>loadApplications());$('applicationSearch').onchange=()=>run(()=>loadApplications());
+
+let notificationChannel,notificationTimer,notificationRows=[],notificationUser,webMessaging,webToken,webRegistration,webMessageUnsubscribe,pushInitializing;
+let notificationEpoch=0;
+const notified=new Set();
+const observedNotices=new Set();
+let noticesInitialized=false;
+const pushStorageKey='taktooka-admin-push';
+function savedPush(){try{return JSON.parse(localStorage.getItem(pushStorageKey)||'null')}catch(_){return null}}
+function rememberPush(value){try{if(value)localStorage.setItem(pushStorageKey,JSON.stringify(value));else localStorage.removeItem(pushStorageKey)}catch(_){}}
+function pushState(label,error=''){$('enableNotifications').textContent=label;$('enableNotifications').title=error;}
+function validNotice(n){return n.kind!=='offer_end'&&(!n.expires_at||Date.parse(n.expires_at)>Date.now());}
+async function showDeviceNotice(n){
+ if(!notificationUser||n.user_id!==notificationUser||!validNotice(n)||notified.has(n.id)||globalThis.Notification?.permission!=='granted')return;
+ const epoch=notificationEpoch;notified.add(n.id);
  try{const registration=webRegistration||await navigator.serviceWorker?.getRegistration(new URL('./',location.href).href);
   if(epoch!==notificationEpoch)return;
   const options={body:englishDigits(n.body),tag:n.id,icon:new URL('./assets/logo.png',location.href).href,data:{notification_id:n.id,recipient_id:n.user_id,target:n.target||{}}};
@@ -351,7 +368,8 @@ function canEdit(page){if(page==='company'||page==='rewards')page='finance';retu
 async function dashboardRpc(name,action,data={}){const r=await db.rpc(name,{p_action:action,p_data:data});if(r.error)throw r.error;return r.data;}
 const companyPage=createCompanyPage({document,rpc:(action,data)=>dashboardRpc('tkt_company',action,data),money,dates,canEdit:()=>canEdit('finance'),canOpenProfile:()=>canView('inventory')||canView('users'),openProfile:id=>run(()=>openUserProfile(id)),confirmVoid:()=>prompt('سبب إلغاء المصروف')});
 async function refreshDashboardAccess(){const r=await db.rpc('tkt_dashboard_access');if(r.error)throw r.error;dashboardAccess=r.data;applyDashboardPermissions();}
-const couponRewards=createCouponRewards({document,rpc:(action,data)=>dashboardRpc('tkt_coupon_rewards',action,data),money,dates,canEdit:()=>canEdit('finance'),notify:status,run,openDetail,openProfile:id=>canView('inventory')||canView('users')?openUserProfile(id):Promise.resolve()});
+const couponCardPrinter=createCouponCardPrinter({document,rpc:(action,data)=>dashboardRpc('tkt_coupon_cards',action,data),canEdit:()=>canEdit('finance'),run,notify:status,dates});
+const couponRewards=createCouponRewards({document,onModeChange:couponCardPrinter.mode,onGenerateCards:couponCardPrinter.generate,onLoadCards:couponCardPrinter.load,rpc:(action,data)=>dashboardRpc('tkt_coupon_rewards',action,data),money,dates,canEdit:()=>canEdit('finance'),notify:status,run,openDetail,openProfile:id=>canView('inventory')||canView('users')?openUserProfile(id):Promise.resolve()});
 function applyDashboardPermissions(){
  companyPage.syncPermissions();couponRewards.syncPermissions();
  document.querySelectorAll('[data-page]').forEach(el=>el.hidden=!canView(el.dataset.page));
