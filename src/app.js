@@ -198,7 +198,7 @@ function renderSupport(){if(!renderCache.changed('support',[supportRooms,recover
  const showSupport=supportFilter!=='recovery',showRecovery=!['support','unread'].includes(supportFilter);
  $('supportHeading').hidden=$('supportRooms').hidden=!showSupport;$('recoveryHeading').hidden=$('recoveryRooms').hidden=!showRecovery;
  for(const [kind,rooms,list]of [['support',supportRooms,$('supportRooms')],['recovery',recovery,$('recoveryRooms')]]){
-  for(const r of (rooms||[]).filter(matches).filter(r=>supportFilter!=='unread'||r.unread>0)){
+  for(const r of [...(rooms||[])].sort((a,b)=>(Date.parse(b.last_at||b.created_at)||0)-(Date.parse(a.last_at||a.created_at)||0)||String(a.user_id||a.id).localeCompare(String(b.user_id||b.id))).filter(matches).filter(r=>supportFilter!=='unread'||r.unread>0)){
    const row=text('article','');row.className='support-conversation';
    const open=document.createElement('button');open.type='button';open.className='conversation-open';
    const avatar=text('span',(r.name||'م').trim().slice(0,1));avatar.className='support-avatar';
@@ -276,6 +276,8 @@ $('refreshApplications').onclick=()=>run(()=>loadApplications());$('moreApplicat
 let notificationChannel,notificationTimer,notificationRows=[],notificationUser,webMessaging,webToken,webRegistration,webMessageUnsubscribe,pushInitializing;
 let notificationEpoch=0;
 const notified=new Set();
+const observedNotices=new Set();
+let noticesInitialized=false;
 const pushStorageKey='taktooka-admin-push';
 function savedPush(){try{return JSON.parse(localStorage.getItem(pushStorageKey)||'null')}catch(_){return null}}
 function rememberPush(value){try{if(value)localStorage.setItem(pushStorageKey,JSON.stringify(value));else localStorage.removeItem(pushStorageKey)}catch(_){}}
@@ -323,13 +325,13 @@ async function initializeWebPush(){
  pushInitializing=pending;try{return await pending}finally{if(pushInitializing===pending)pushInitializing=null;}
 }
 async function noticeRpc(action,data={}){const r=await db.rpc('tkt_notification_action',{p_action:action,p_data:data});if(r.error)throw r.error;return r.data;}
-async function refreshNotifications(){if(!notificationUser)return;const epoch=notificationEpoch,rows=await noticeRpc('list');if(epoch!==notificationEpoch)return;notificationRows=rows;const count=notificationRows.filter(n=>!n.read_at&&n.kind!=='offer_end').length;$('notifications').textContent=`الإشعارات${count?' ('+count+')':''}`;const urgent=notificationRows.filter(n=>!n.read_at&&n.kind==='emergency').length;$('notifications').classList.toggle('emergency-notification',urgent>0);if(urgent)$('notifications').textContent='🔴 SOS طوارئ ('+urgent+') · '+$('notifications').textContent;}
+async function refreshNotifications(){if(!notificationUser)return;const epoch=notificationEpoch,rows=await noticeRpc('list');if(epoch!==notificationEpoch)return;notificationRows=rows;if(noticesInitialized){for(const n of rows){if(observedNotices.has(n.id))continue;observedNotices.add(n.id);if(!n.read_at&&validNotice(n)){if(n.kind==='support'||n.kind==='recovery'){status(n.title+' · '+n.body);if(activePage==='support')loadSupport().catch(()=>{});}await showDeviceNotice(n);}}}else{rows.forEach(n=>observedNotices.add(n.id));noticesInitialized=true;}const count=notificationRows.filter(n=>!n.read_at&&n.kind!=='offer_end').length;$('notifications').textContent=`الإشعارات${count?' ('+count+')':''}`;const urgent=notificationRows.filter(n=>!n.read_at&&n.kind==='emergency').length;$('notifications').classList.toggle('emergency-notification',urgent>0);if(urgent)$('notifications').textContent='🔴 SOS طوارئ ('+urgent+') · '+$('notifications').textContent;}
 async function startNotifications(){await stopNotifications();notificationUser=(await db.auth.getUser()).data.user?.id;if(!notificationUser)return;$('notifications').hidden=false;$('enableNotifications').hidden=false;if(canView('support'))await emergencyAlarm.start(notificationUser);if(canView('lines'))await lineAlarm.start(notificationUser);await refreshNotifications();
  notificationChannel=db.channel('admin-notifications-'+notificationUser).on('postgres_changes',{event:'INSERT',schema:'public',table:'tkt_notifications',filter:'user_id=eq.'+notificationUser},async payload=>{if(payload.new.kind==='emergency')emergencyAlarm.notify(payload.new.target?.emergency_id);if(!webMessaging)await showDeviceNotice(payload.new);await refreshNotifications();}).subscribe();
  notificationTimer=setInterval(()=>refreshNotifications().catch(()=>{}),15000);
  pushState('تفعيل إشعارات الجهاز');await initializeWebPush();
 }
-async function stopNotifications(unregister=false){emergencyAlarm.stop();lineAlarm.stop();notificationEpoch++;pushInitializing=null;clearInterval(notificationTimer);webMessageUnsubscribe?.();webMessageUnsubscribe=null;if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(unregister&&notificationUser){const saved=savedPush(),token=webToken||(saved?.userId===notificationUser?saved.token:null);if(token)await noticeRpc('unregister',{token});rememberPush(null);if(webRegistration){const notices=await webRegistration.getNotifications();notices.forEach(n=>n.close());}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;webRegistration=null;notified.clear();$('notifications').hidden=true;$('enableNotifications').hidden=true;}
+async function stopNotifications(unregister=false){emergencyAlarm.stop();lineAlarm.stop();notificationEpoch++;pushInitializing=null;clearInterval(notificationTimer);webMessageUnsubscribe?.();webMessageUnsubscribe=null;if(notificationChannel)await db.removeChannel(notificationChannel);notificationChannel=null;if(unregister&&notificationUser){const saved=savedPush(),token=webToken||(saved?.userId===notificationUser?saved.token:null);if(token)await noticeRpc('unregister',{token});rememberPush(null);if(webRegistration){const notices=await webRegistration.getNotifications();notices.forEach(n=>n.close());}}notificationUser=null;notificationRows=[];webToken=null;webMessaging=null;webRegistration=null;notified.clear();observedNotices.clear();noticesInitialized=false;$('notifications').hidden=true;$('enableNotifications').hidden=true;}
 async function openNotification(n){await noticeRpc('read',{id:n.id});await refreshNotifications();const t=n.target||{};
  if(t.screen==='lines'){showPage('lines');await loadLines();await trackLine(t.line_id);}
  else if(t.screen==='emergency'){await openEmergency(t.emergency_id);}
