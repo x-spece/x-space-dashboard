@@ -1,4 +1,4 @@
-import {createCouponCardPrinter} from './coupon-card-printer.js?v=1.6.66';
+import {createCouponCardPrinter} from './coupon-card-printer.js?v=1.6.68';
 import {createCouponRewards} from './coupon-rewards.js?v=1.6.66';
 import {createCompanyPage} from './company-performance.js?v=1.6.61';
 import {createRenderCache, createRequestTracker, debounceTask} from './performance.js?v=1.6.42';
