@@ -16,7 +16,7 @@ class TaktookaApp extends StatelessWidget {
     animation: appPreferences,
     builder: (context, _) => MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'تكتوكة',
+      title: 'تكتوكة ويب',
       navigatorKey: appNavigatorKey,
       locale: Locale(appPreferences.language),
       supportedLocales: const [Locale('ar'), Locale('en'), Locale('ku')],
