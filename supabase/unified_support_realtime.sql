@@ -96,3 +96,6 @@ end $fn$;
 revoke all on function tkt_private.exchange_support_notice() from public,anon,authenticated;
 drop trigger if exists tkt_exchange_support_notice on tkt_private.exchange_messages;
 create trigger tkt_exchange_support_notice after insert on tkt_private.exchange_messages for each row execute function tkt_private.exchange_support_notice();
+
+drop trigger if exists tkt_live_dashboard on tkt_private.wallets;
+create trigger tkt_live_dashboard after insert or update or delete on tkt_private.wallets for each row execute function tkt_private.broadcast_dashboard_change();
