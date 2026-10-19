@@ -135,7 +135,7 @@ function facts(entries){const dl=text('dl','');dl.className='facts';for(const [l
 function record(title,subtitle,controls=[]){const row=text('article','');row.className='record';const info=text('div','');info.append(text('strong',title),Array.isArray(subtitle)?facts(subtitle):text('p',subtitle));const actions=text('div','');actions.className='controls';actions.append(...controls);row.append(info,actions);return row}
 function empty(list){if(!list.childElementCount)list.append(Object.assign(text('p','ماكو بيانات حالياً'),{className:'empty'}))}
 function inputField(label,value,type='text'){const box=text('label',label),input=document.createElement('input');input.type=type;input.value=value??'';box.append(input);return {box,input}}
-function openDetail(title){closeDetail();$('detailTitle').textContent=title;$('detailBody').replaceChildren();document.body.classList.add('detail-open');$('detailDialog').showModal();$('detailDialog').scrollTop=0;return $('detailBody')}
+function openDetail(title,route=null){closeDetail();detailAction=route;queueMicrotask(()=>appNavigation?.commit());$('detailTitle').textContent=title;$('detailBody').replaceChildren();document.body.classList.add('detail-open');$('detailDialog').showModal();$('detailDialog').scrollTop=0;return $('detailBody')}
 function closeDetail(){detailAction=null;document.body.classList.remove('detail-open');stopCaptainProfile();if(!$('chatScreen').hidden){$('chatScreen').hidden=true;document.body.classList.remove('chat-open');$('chatWorkspace').replaceChildren();}dialogEpoch++;dialogMode=null;dialogKey=null;chatSignature=null;if(dialogMap){dialogMap.remove();dialogMap=null;dialogLayer=null}if($('detailDialog').open)$('detailDialog').close()}
 $('closeDialog').onclick=()=>requestAppBack(closeDetail);$('detailDialog').addEventListener('cancel',event=>{event.preventDefault();requestAppBack(closeDetail);});$('detailDialog').addEventListener('close',()=>document.body.classList.remove('detail-open'));
 function mapFor(id){const m=L.map(id,{maxZoom:19}).setView([33.54844,44.41179],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:19,keepBuffer:2,updateWhenIdle:true,attribution:'© OpenStreetMap contributors'}).addTo(m);requestAnimationFrame(()=>{if(document.getElementById(id)&&m.getContainer()?.isConnected)m.invalidateSize({pan:false});});return m}
@@ -354,7 +354,8 @@ async function openNotification(n){await noticeRpc('read',{id:n.id});await refre
  else if(t.screen==='finance'||t.screen==='wallet'){showPage('finance');await loadFinance();}
  else {showPage('users');await loadUsers();}
 }
-$('notifications').onclick=()=>run(async()=>{await refreshNotifications();const body=openDetail('الإشعارات');body.append(button('قراءة الكل',async()=>{await noticeRpc('read_all');await refreshNotifications();closeDetail();}));for(const n of notificationRows.filter(n=>n.kind!=='offer_end'))body.append(record((n.read_at?'':'● ')+n.title,n.body+' · '+dates(n.created_at),[button('فتح',()=>openNotification(n))]));empty(body);});
+async function showNotificationInbox(){await refreshNotifications();const body=openDetail('الإشعارات',{name:'notifications',args:[]});body.append(button('قراءة الكل',async()=>{await noticeRpc('read_all');await refreshNotifications();closeDetail();}));for(const n of notificationRows.filter(n=>n.kind!=='offer_end'))body.append(record((n.read_at?'':'● ')+n.title,n.body+' · '+dates(n.created_at),[button('فتح',()=>openNotification(n))]));empty(body);}
+$('notifications').onclick=()=>run(showNotificationInbox);
 $('enableNotifications').onclick=()=>run(async()=>{if(!('Notification'in window))throw new Error('هذا المتصفح لا يدعم إشعارات الجهاز');const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('اسمح بالإشعارات من إعدادات المتصفح');if(await initializeWebPush())status('تم تفعيل إشعارات الجهاز والخلفية');else status($('enableNotifications').title||'تعذّر تفعيل إشعارات الخلفية');});
 window.addEventListener('online',()=>{if(notificationUser)initializeWebPush().catch(()=>{});});
 if('serviceWorker'in window.navigator)window.navigator.serviceWorker.addEventListener('message',event=>{if(event.data?.type==='tkt-notice-click'&&notificationUser)run(async()=>{await refreshNotifications();const n=notificationRows.find(n=>n.id===event.data.id);if(n)await openNotification(n);});});
@@ -657,7 +658,7 @@ $('newStaffPage').onclick=()=>{clearStaffForm();openSectionScreen($('staffEditor
 
 let logoutConfirmAt=0;const logoutAction=$('logout').onclick;$('logout').onclick=()=>{if(Date.now()-logoutConfirmAt<2200)return logoutAction();logoutConfirmAt=Date.now();status('اضغط تسجيل الخروج مرة ثانية لتأكيد الخروج');};
 
-const detailActions={};
+const detailActions={notifications:showNotificationInbox,exchangeMetric:kind=>exchangesPage.openMetric(kind),couponHistory:code=>couponRewards.openHistory(code)};
 {const original=openUserProfile;openUserProfile=async(...args)=>{const result=await original(...args);detailAction={name:'openUserProfile',args};appNavigation?.commit();return result;};detailActions['openUserProfile']=openUserProfile;}
 {const original=trackRide;trackRide=async(...args)=>{const result=await original(...args);detailAction={name:'trackRide',args};appNavigation?.commit();return result;};detailActions['trackRide']=trackRide;}
 {const original=trackLine;trackLine=async(...args)=>{const result=await original(...args);detailAction={name:'trackLine',args};appNavigation?.commit();return result;};detailActions['trackLine']=trackLine;}

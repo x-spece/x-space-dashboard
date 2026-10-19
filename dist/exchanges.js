@@ -10,7 +10,7 @@ export function createExchangesPage({document,rpc,run,notify,money,dates,openDet
  async function metricDetails(kind){
  const latest=await rpc('admin_list');rows=latest;
  const titles={all:'كل الصيرفات',active:'الصيرفات الفعّالة',provinces:'الصيرفات حسب المحافظات',balances:'تفاصيل أرصدة الصيرفات',due:'تفاصيل المطلوب بذمّة الصيرفات'};
- const body=openDetail(titles[kind]||'تفاصيل المحافظة');
+ const body=openDetail(titles[kind]||'تفاصيل المحافظة',{name:'exchangeMetric',args:[kind]});
  if(kind==='provinces'){const groups=new Map();for(const a of rows){const p=a.province||'غير محددة';groups.set(p,(groups.get(p)||0)+1);}if(!groups.size)body.append(el('p','لا توجد صيرفات مسجلة حتى الآن.'));for(const[p,count]of [...groups].sort((a,b)=>b[1]-a[1]))body.append(action(p+' · '+count+' صيرفة',()=>metricDetails('province:'+p)));return;}
  const province=kind.startsWith('province:')?kind.slice(9):null;
  const list=rows.filter(a=>kind==='active'?a.active:kind==='due'?Number(a.due)>0:province?(a.province||'غير محددة')===province:true);
@@ -62,5 +62,5 @@ export function createExchangesPage({document,rpc,run,notify,money,dates,openDet
  $('exchangeRefresh').onclick=()=>run(async()=>{await load();if(selected)await profile(selected.id);});$('exchangeSearch').oninput=render;$('exchangeProvince').onchange=render;$('exchangeCloseProfile').onclick=()=>requestAppBack(()=>{epoch++;selected=null;chatVisible=false;showProfile(false);});$('exchangeMoreTransactions').onclick=()=>run(()=>loadTransactions(true));$('exchangeMoreAccounts').onclick=()=>run(()=>loadAccounts(true));$('exchangeClearFilter').onclick=()=>run(async()=>{accountFilter=null;await loadTransactions(false);});$('exchangeReply').oninput=()=>messageId=null;$('exchangeReplyForm').onsubmit=e=>{e.preventDefault();run(async()=>{messageId??=crypto.randomUUID();await rpc('admin_send',{agent_id:selected.id,id:messageId,body:$('exchangeReply').value});$('exchangeReply').value='';messageId=null;await messages();});};
  setInterval(()=>{if(selected&&chatVisible&&!document.hidden&&!$('page-exchanges').hidden)messages().catch(()=>{});},7000);
  let liveSignature='';async function refresh(){const r=await rpc('admin_list'),signature=JSON.stringify(r);if(signature===liveSignature)return;liveSignature=signature;await load();if(selected)await profile(selected.id,true);}
- return{load,refresh,getState(){return selected?{id:selected.id,accountFilter}:null;},async restore(state){await profile(state.id);if(state.accountFilter){accountFilter=state.accountFilter;await loadTransactions(false);}},reset(){selected=null;chatVisible=false;epoch++;showProfile(false);}};
+ return{load,refresh,openMetric:metricDetails,getState(){return selected?{id:selected.id,accountFilter}:null;},async restore(state){await profile(state.id);if(state.accountFilter){accountFilter=state.accountFilter;await loadTransactions(false);}},reset(){selected=null;chatVisible=false;epoch++;showProfile(false);}};
 }
