@@ -1,6 +1,6 @@
 import {normalizeIraqiPhone} from './phone.js?v=4';
 import{$,db,rpc,run,notice,money,date,phone,el,renderTransactions,renderMessages}from'./client.js?v=4';
-let token=sessionStorage.getItem('tkt-exchange-token'),captain=null,me=null,pending=null,page='activate',mode='login',sharedLocation=null,authenticated=false,failures=0,transactionRows=[],recoverySession=null;
+let token=sessionStorage.getItem('tkt-exchange-token'),captain=null,me=null,pending=null,page='activate',mode='login',sharedLocation=null,authenticated=false,failures=0,transactionRows=[],settlementRows=[],recoverySession=null;
 const call=(action,data={})=>rpc(action,{...data,token});
 const provinces=['بغداد','البصرة','نينوى','أربيل','السليمانية','دهوك','حلبجة','كركوك','ديالى','الأنبار','صلاح الدين','بابل','كربلاء','النجف','واسط','القادسية','ذي قار','ميسان','المثنى'];
 $('province').append(...provinces.map(p=>new Option(p,p)));
@@ -11,7 +11,7 @@ function problem(text){throw Object.assign(new Error(text),{userMessage:text});}
 async function phoneAuth(body){if(Object.hasOwn(body,'phone')){const ph=normalizeIraqiPhone(body.phone);if(!ph){$('loginPhone').focus();problem('الرقم الشخصي مو صحيح. اكتب رقم عراقي يبدأ بـ 07 ويتكوّن من 11 رقم.');}body={...body,phone:ph};}const{data,error}=await db.functions.invoke('taktooka-phone-auth',{body});let failure=data?.error;if(error){try{failure=(await error.context.json()).error;}catch{}}if(error||failure){const messages={WRONG_PASSWORD:'كلمة السر غير صحيحة.',ACCOUNT_EXISTS:'هذا الرقم مسجّل بتكتوكة. اختار «عندي حساب» وادخل بنفس كلمة السر.',INVALID_PASSWORD:'كلمة السر الجديدة من 8 إلى 128 حرفًا.',INVALID_PHONE:'اكتب رقم عراقي صحيح من 11 رقم يبدأ بـ 07.',PRIVACY_CONSENT_REQUIRED:'وافق على سياسة الخصوصية أولًا.',RATE_LIMIT:'محاولات كثيرة؛ انتظر قليلًا وحاول مرة ثانية.',CONTACT_SUPPORT:'تواصل ويا الدعم للتحقق من حسابك.',LOGIN_LOCKED:'افتح محادثة الدعم لاستعادة حسابك.'};if(failure==='WRONG_PASSWORD'){failures++;if(failures>=3)$('recovery').hidden=false;}problem(messages[failure]||'تعذّر الاتصال بنظام الدخول. حاول مرة ثانية.');}return data;}
 function registrationData(){const personalPhone=normalizeIraqiPhone($('loginPhone').value),shopPhone=normalizeIraqiPhone($('shopPhone').value);if(!personalPhone){$('loginPhone').focus();problem('تحقق من رقم الهاتف الشخصي؛ لازم رقم عراقي صحيح.');}if(!shopPhone){$('shopPhone').focus();problem('تحقق من رقم هاتف الصيرفة؛ لازم رقم عراقي صحيح.');}$('loginPhone').value=phone(personalPhone);$('shopPhone').value=phone(shopPhone);const data={personal_name:$('personalName').value.trim(),shop_name:$('shopName').value.trim(),personal_phone:personalPhone,shop_phone:shopPhone,province:$('province').value,area:$('area').value.trim(),street:$('street').value.trim(),...sharedLocation};if(data.personal_name.split(/\s+/).length<3)problem('اكتب اسمك الثلاثي كاملًا.');if(!sharedLocation)problem('شارك لوكيشن الصيرفة أولًا.');return data;}
 $('shareLocation').onclick=()=>run(async()=>{if(!navigator.geolocation)problem('المتصفح ما يدعم الموقع. افتح الرابط بمتصفح Chrome.');$('locationStatus').textContent='جاري تحديد موقع الصيرفة…';let p;try{p=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:20000,maximumAge:0}));}catch{sharedLocation=null;$('locationStatus').textContent='ما تمّت مشاركة الموقع.';problem('اسمح بالموقع من إعدادات المتصفح وشغّل GPS، ثم حاول مرة ثانية.');}const{latitude:lat,longitude:lng,accuracy:accuracy_m}=p.coords;if(lat<29||lat>38||lng<38||lng>49)problem('موقع الصيرفة لازم يكون داخل العراق.');sharedLocation={lat,lng,accuracy_m};$('locationStatus').textContent='تمت مشاركة الموقع ✓ · دقة تقريبية '+Math.round(accuracy_m)+' متر';$('locationLink').href='https://www.openstreetmap.org/?mlat='+lat+'&mlon='+lng+'#map=17/'+lat+'/'+lng;$('locationLink').hidden=false;});
-async function refresh(){const first=!me;me=await call('me');$('balance').textContent=Number(me.balance).toLocaleString('en-US');$('agentName').textContent=me.name;$('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;$('walletCard').hidden=false;$('authBack').hidden=true;if(first)await showPage('activate');}
+async function refresh(){const first=!me;me=await call('me');$('balance').textContent=Number(me.balance).toLocaleString('en-US');renderDebt();$('agentName').textContent=me.name;$('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;$('walletCard').hidden=false;$('authBack').hidden=true;if(first)await showPage('activate');}
 async function loadAccount(){const a=await rpc('account');authenticated=true;if(a.needs_registration){setMode('complete');$('personalName').value=a.personal_name||'';$('loginPhone').value=phone(a.personal_phone);$('logout').hidden=false;return;}await refresh();}
 $('loginForm').onsubmit=e=>{e.preventDefault();run(async()=>{const creating=mode!=='login',data=creating?registrationData():null;if(mode==='register'&&$('loginPin').value!==$('confirmPassword').value)problem('كلمتا السر مو متطابقتين.');if(mode!=='complete'){const r=await phoneAuth({op:mode==='register'?'register':'login',name:$('personalName').value.trim(),phone:$('loginPhone').value,password:$('loginPin').value,privacy_version:$('privacy').checked?'2026-10-11':null});$('loginPin').value='';$('confirmPassword').value='';const result=await db.auth.refreshSession({refresh_token:r.refresh_token});if(result.error)throw result.error;authenticated=true;sessionStorage.removeItem('tkt-exchange-token');token=null;if(creating)setMode('complete');}if(creating){const verified=await rpc('account');const verifiedPhone=normalizeIraqiPhone(verified.personal_phone);if(!verifiedPhone)problem('تعذّر التحقق من رقم الحساب. سجّل الدخول من جديد.');data.personal_phone=verifiedPhone;$('loginPhone').value=phone(verifiedPhone);await rpc('register',data);await refresh();notice('تم إنشاء حساب الصيرفة. الرصيد الحالي صفر؛ تواصل ويا الإدارة للشحن.');}else{await loadAccount();notice('تم تسجيل الدخول.');}});};
 $('logout').onclick=()=>run(async()=>{if(token)await call('logout');await db.auth.signOut();sessionStorage.removeItem('tkt-exchange-token');location.reload();});
@@ -29,8 +29,8 @@ async function showPage(name){
  page=name;$('workspace').hidden=false;$('login').hidden=true;$('walletCard').hidden=!me;$('authBack').hidden=Boolean(me);
  for(const item of document.querySelectorAll('.page'))item.hidden=item.id!==name;
  for(const b of document.querySelectorAll('nav button'))b.classList.toggle('selected',b.dataset.page===name);
- $('title').textContent={activate:'تفعيل اشتراك',transactions:'المعاملات والتحويلات',support:'دعم الصيرفات',about:'حول الشركة',qr:'باركود البوابة'}[name];notice('');
- if(name==='transactions')await transactions();if(name==='support')await messages();
+ $('title').textContent={activate:'تفعيل اشتراك',transactions:'المعاملات والتحويلات',settlements:'التسديد والذمة',support:'دعم الصيرفات',about:'حول الشركة',qr:'باركود البوابة'}[name];notice('');
+ if(name==='settlements')await settlements();if(name==='transactions')await transactions();if(name==='support')await messages();
 }
 $('authBack').onclick=()=>run(()=>showPage('activate'));
 for(const b of document.querySelectorAll('nav button'))b.onclick=()=>run(()=>showPage(b.dataset.page));
@@ -42,6 +42,26 @@ for(const b of document.querySelectorAll('[data-weeks]'))b.onclick=()=>{$('weeks
 $('review').onclick=()=>run(async()=>{const w=Number($('weeks').value);if(!captain||!Number.isInteger(w)||w<1||w>52)throw new Error('INVALID_WEEKS');await refresh();if(me.balance<w*5000)throw new Error('INSUFFICIENT_BALANCE');if(!pending)pending={id:crypto.randomUUID(),phone:captain.phone,captain_id:captain.id,weeks:w};$('confirmationDetails').replaceChildren(el('h3',captain.name),el('p',phone(captain.phone)),el('p',`${w} أسبوع — ${w*7} يوم`),el('h3',money(w*5000)),el('p','الرصيد بعد الخصم: '+money(me.balance-w*5000)));$('confirmation').showModal();});
 $('edit').onclick=()=>$('confirmation').close();
 $('confirm').onclick=()=>run(async()=>{if(!pending)return;const receipt=await call('activate',pending);$('confirmation').close();$('captainBox').hidden=true;$('receipt').hidden=false;$('receipt').replaceChildren(el('h2','✓ تم تفعيل الاشتراك بنجاح'),el('p',captain.name+' · '+phone(captain.phone)),el('p',`${receipt.weeks} أسبوع · ${money(receipt.amount)}`),el('p','الاشتراك حتى: '+date(receipt.expires_at)),el('p','رقم المعاملة: '+receipt.id));pending=null;await refresh();notice('تم الخصم وتفعيل الاشتراك.');});
+
+function renderDebt(){
+ $('walletDue').textContent=money(me.due);
+ $('currentDue').textContent=money(me.due);$('totalSpent').textContent=money(me.spent);$('totalSettled').textContent=money(me.settled);
+ $('dueStatus').textContent=Number(me.due)>0?'هذا المبلغ المطلوب تسديده للشركة.':Number(me.spent)>0?'✓ ذمّتك مصفّرة حاليًا.':'ما عندك مبالغ بذمّتك.';
+ $('lastPayment').textContent=me.last_payment_at?date(me.last_payment_at):'ماكو تسديد مسجّل بعد';
+ $('lastCleared').textContent=me.last_cleared_at?date(me.last_cleared_at):'ماكو عملية تصفير مسجّلة بعد';
+}
+async function settlements(more=false){
+ await refresh();
+ const rows=await call('settlements',{offset:more?settlementRows.length:0});settlementRows=more?[...settlementRows,...rows]:rows;
+ const box=$('settlementList');box.replaceChildren();if(!settlementRows.length)box.append(el('p','ماكو تسديدات مسجّلة لحد الآن.'));
+ for(const s of settlementRows){const row=el('article',null,'record');row.append(el('strong',(Number(s.due_after)===0?'✓ تسديد وتصفير الذمّة — ':'تسديد جزئي — ')+money(s.amount)),el('p','وقت تسجيل الاستلام: '+date(s.created_at)),el('p','الذمّة قبل التسديد: '+money(s.due_before)),el('p','المتبقّي بعد التسديد: '+money(s.due_after)));if(s.note)row.append(el('p',s.note));row.append(el('small','رقم الوصل: '+s.id));box.append(row);}
+ $('moreSettlements').hidden=rows.length<100;
+}
+$('openDebt').onclick=()=>run(()=>showPage('settlements'));
+$('reloadSettlements').onclick=()=>run(()=>settlements());
+$('moreSettlements').onclick=()=>run(()=>settlements(true));
+setInterval(()=>{if(me&&!document.hidden&&!document.body.dataset.busy)run(()=>page==='settlements'?settlements():refresh());},30000);
+
 async function transactions(more=false){const rows=await call('transactions',{offset:more?transactionRows.length:0});transactionRows=more?[...transactionRows,...rows]:rows;renderTransactions(transactionRows,$('transactionList'));$('moreTransactions').hidden=rows.length<100;}async function messages(){renderMessages(await call('messages'),$('messages'));}
 $('reloadTransactions').onclick=()=>run(()=>transactions());$('moreTransactions').onclick=()=>run(()=>transactions(true));
 let messageId=null;$('messageBody').oninput=()=>messageId=null;
