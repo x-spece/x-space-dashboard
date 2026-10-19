@@ -1,4 +1,4 @@
-import {createExchangesPage} from './exchanges.js?v=1.6.70';
+import {createExchangesPage} from './exchanges.js?v=1.6.71';
 import {createCouponCardPrinter} from './coupon-card-printer.js?v=1.6.68';
 import {createCouponRewards} from './coupon-rewards.js?v=1.6.66';
 import {createCompanyPage} from './company-performance.js?v=1.6.61';
