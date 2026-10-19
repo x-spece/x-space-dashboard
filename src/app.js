@@ -1,4 +1,4 @@
-import {createExchangesPage} from './exchanges.js?v=1.6.71';
+import {createExchangesPage} from './exchanges.js?v=1.6.72';
 import {createCouponCardPrinter} from './coupon-card-printer.js?v=1.6.68';
 import {createCouponRewards} from './coupon-rewards.js?v=1.6.66';
 import {createCompanyPage} from './company-performance.js?v=1.6.61';
@@ -499,7 +499,7 @@ const unlockEmergencySound=event=>{if(event.isTrusted)emergencyAlarm.arm();};
 document.addEventListener('pointerdown',unlockEmergencySound,{capture:true});
 document.addEventListener('keydown',unlockEmergencySound,{capture:true});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)emergencyAlarm.refresh();});
-const {data:{session}}=await db.auth.getSession();if(session){await run(load);const id=new URL(window.location.href).searchParams.get('notice');if(id){const n=notificationRows.find(n=>n.id===id);if(n)await run(()=>openNotification(n));}}
+
 
 
 // Promotional images are public; row/storage mutation permissions are admin-only.
@@ -628,3 +628,4 @@ async function loadPortalSettings(){const value=await portalRpc('admin_get');$('
 $('portalSave').onclick=()=>run(async()=>{await portalRpc('save',{android_url:$('portalAndroidUrl').value.trim(),available:$('portalAvailable').checked});await loadPortalSettings();status('تم تحديث رابط تحميل التطبيق بالموقع');});
 $('portalAnnounce').onclick=()=>run(async()=>{if(!confirm('إرسال إشعار توفر التطبيق إلى المسجلين بالموقع؟'))return;const r=await portalRpc('announce');await loadPortalSettings();status(`تم إدراج الإشعار لـ ${r.queued} حساب. يصل تنبيه المتصفح للأجهزة المفعّل بها الإذن.`);});
 
+const {data:{session}}=await db.auth.getSession();if(session){await run(load);const id=new URL(window.location.href).searchParams.get('notice');if(id){const n=notificationRows.find(n=>n.id===id);if(n)await run(()=>openNotification(n));}}
