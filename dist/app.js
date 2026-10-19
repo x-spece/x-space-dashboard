@@ -231,7 +231,7 @@ async function updateChat(){if(dialogRefreshing||dialogMode!=='chat')return;dial
  const box=text('div','');box.className='chat-message'+(m.is_admin?' admin-message':'');const content=text('div','');content.className='message-content';appendLinks(content,m.body||'');box.append(content,text('small',`${m.is_admin?'الدعم':room.name||'المستخدم'} · ${displayTime(m.created_at)}`));log.append(box);
  }if(!rows.length)log.append(text('p','ابدأ المحادثة بإرسال رسالة.'));if(nearBottom)log.scrollTop=log.scrollHeight;
  }finally{dialogRefreshing=false}}
-function setMenu(open){document.body.classList.toggle('menu-open',open);$('menuBackdrop').hidden=!open;$('menuToggle').setAttribute('aria-expanded',String(open));}
+function setMenu(open){const menu=$('dashboardMenu');if(open&&!$('admin').hidden){if(!menu.open)menu.showModal();}else if(menu.open)menu.close();document.body.classList.toggle('menu-open',menu.open);$('menuBackdrop').hidden=true;$('menuToggle').setAttribute('aria-expanded',String(menu.open));}
 $('menuToggle').onclick=()=>setMenu(!document.body.classList.contains('menu-open'));$('menuBackdrop').onclick=()=>setMenu(false);document.addEventListener('keydown',e=>{if(e.key==='Escape'){setMenu(false);if(dialogMode==='chat')closeDetail()}});
 function resetPassword(u){const body=openDetail('رابط استعادة كلمة السر');body.append(text('p',`الحساب: ${u.name||''} · ${localPhone(u.phone)}. تحقق من صاحب الرقم قبل إنشاء الرابط. الرابط صالح 30 دقيقة ولمرة واحدة.`),button('إنشاء رابط آمن',async()=>{const {data,error}=await db.functions.invoke('taktooka-password-link',{body:{op:'issue',user_id:u.user_id,phone:u.phone}});if(error||!data?.url)throw new Error(data?.error||'تعذر إنشاء الرابط');body.replaceChildren(text('p','تم إنشاء الرابط؛ إنشاء رابط جديد يلغي السابق.'),text('p','أرسله فقط إلى رقم صاحب الحساب المسجّل.'));const phone=String(data.phone).replace(/[^0-9]/g,''),whatsapp=document.createElement('a');whatsapp.textContent='فتح واتساب لإرسال الرابط';whatsapp.href='https://wa.me/'+phone+'?text='+encodeURIComponent('تكتوكة 🛺\nهذا رابط تعيين كلمة سر جديدة لحسابك، صالح 30 دقيقة ولمرة واحدة. لا تشاركه ويا أحد:\n'+data.url);whatsapp.target='_blank';whatsapp.rel='noopener noreferrer';whatsapp.className='button';body.append(whatsapp,button('نسخ الرابط',async()=>{await navigator.clipboard.writeText(data.url);status('تم نسخ رابط استعادة كلمة السر');}));}));}
 async function loadFavorites(){favorites=await manage('favorites',{limit:500});renderFavorites()}
@@ -628,5 +628,19 @@ async function portalRpc(action,data={}){const r=await db.rpc('tkt_captain_porta
 async function loadPortalSettings(){const value=await portalRpc('admin_get');$('portalAndroidUrl').value=value.android_url||'';$('portalAvailable').checked=value.available;$('portalMetrics').textContent=`المسجلون بالموقع: ${value.members} · حسابات لديها اشتراك إشعارات ويب: ${value.subscribed}`;$('portalAnnounce').disabled=Boolean(value.announcement_id)||!canEdit('applications');$('portalSave').disabled=!canEdit('applications');$('portalAnnouncementStatus').textContent=value.announcement_id?'أُرسل إعلان توفر التطبيق للمسجلين.':'';}
 $('portalSave').onclick=()=>run(async()=>{await portalRpc('save',{android_url:$('portalAndroidUrl').value.trim(),available:$('portalAvailable').checked});await loadPortalSettings();status('تم تحديث رابط تحميل التطبيق بالموقع');});
 $('portalAnnounce').onclick=()=>run(async()=>{if(!confirm('إرسال إشعار توفر التطبيق إلى المسجلين بالموقع؟'))return;const r=await portalRpc('announce');await loadPortalSettings();status(`تم إدراج الإشعار لـ ${r.queued} حساب. يصل تنبيه المتصفح للأجهزة المفعّل بها الإذن.`);});
+
+
+$('dashboardMenuClose').onclick=()=>setMenu(false);
+$('dashboardMenu').addEventListener('close',()=>{document.body.classList.remove('menu-open');$('menuToggle').setAttribute('aria-expanded','false');$('menuToggle').focus();});
+$('dashboardMenu').addEventListener('click',e=>{const menu=$('dashboardMenu');if(e.target===menu){const r=menu.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)setMenu(false);}});
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('input,textarea,[contenteditable="true"],.leaflet-container'))e.preventDefault();});
+document.addEventListener('dragstart',e=>{if(!e.target.closest('input,textarea,.leaflet-container'))e.preventDefault();});
+let dashboardInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dashboardInstallPrompt=e;});
+window.addEventListener('appinstalled',()=>{$('dashboardInstall').hidden=true;dashboardInstallPrompt=null;});
+if(window.matchMedia('(display-mode: standalone)').matches)$('dashboardInstall').hidden=true;
+$('dashboardInstall').onclick=async()=>{if(dashboardInstallPrompt){const prompt=dashboardInstallPrompt;dashboardInstallPrompt=null;await prompt.prompt();await prompt.userChoice;}else{$('dashboardInstallInstructions').textContent=/iPhone|iPad|iPod/.test(navigator.userAgent)?'من Safari اضغط المشاركة، ثم «إضافة إلى الشاشة الرئيسية».':'من قائمة Chrome ⋮ اختار «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية». إذا فاتحه داخل تطبيق ثاني، افتح الرابط أولًا بمتصفح Chrome.';$('dashboardInstallHelp').showModal();}};
+$('dashboardInstallClose').onclick=()=>$('dashboardInstallHelp').close();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./firebase-messaging-sw.js',{updateViaCache:'none'}).catch(()=>{});
 
 const {data:{session}}=await db.auth.getSession();if(session){await run(load);const id=new URL(window.location.href).searchParams.get('notice');if(id){const n=notificationRows.find(n=>n.id===id);if(n)await run(()=>openNotification(n));}}
