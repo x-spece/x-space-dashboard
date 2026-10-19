@@ -33,7 +33,6 @@ async function showPage(name){
  if(name==='transactions')await transactions();if(name==='support')await messages();
 }
 $('authBack').onclick=()=>run(()=>showPage('activate'));
-for(const b of document.querySelectorAll('nav button'))b.classList.toggle('selected',b.dataset.page===name);$('title').textContent={activate:'تفعيل اشتراك',transactions:'المعاملات والتحويلات',support:'دعم الصيرفات',about:'حول الشركة',qr:'باركود البوابة'}[name];if(name==='transactions')await transactions();if(name==='support')await messages();}
 for(const b of document.querySelectorAll('nav button'))b.onclick=()=>run(()=>showPage(b.dataset.page));
 function resetCaptain(){captain=null;pending=null;$('captainBox').hidden=true;$('receipt').hidden=true;}
 $('captainPhone').oninput=resetCaptain;
