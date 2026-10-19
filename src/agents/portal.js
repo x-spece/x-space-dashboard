@@ -2,6 +2,23 @@ import {normalizeIraqiPhone} from './phone.js?v=4';
 import{$,db,rpc,run,notice,money,date,phone,el,renderTransactions,renderMessages}from'./client.js?v=4';
 let token=sessionStorage.getItem('tkt-exchange-token'),captain=null,me=null,pending=null,page='activate',mode='login',sharedLocation=null,authenticated=false,failures=0,transactionRows=[],settlementRows=[],recoverySession=null;
 const call=(action,data={})=>rpc(action,{...data,token});
+
+const menu=$('appMenu');
+function closeMenu(){if(menu.open)menu.close();$('menuToggle').setAttribute('aria-expanded','false');}
+$('menuToggle').onclick=()=>{menu.showModal();$('menuToggle').setAttribute('aria-expanded','true');};
+$('menuClose').onclick=closeMenu;
+menu.addEventListener('close',()=>{$('menuToggle').setAttribute('aria-expanded','false');$('menuToggle').focus();});
+menu.addEventListener('click',e=>{if(e.target===menu){const r=menu.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeMenu();}});
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('input,textarea,[contenteditable="true"]'))e.preventDefault();});
+document.addEventListener('dragstart',e=>{if(!e.target.closest('input,textarea'))e.preventDefault();});
+let installPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;});
+window.addEventListener('appinstalled',()=>{installPrompt=null;$('installApp').hidden=true;});
+if(window.matchMedia('(display-mode: standalone)').matches)$('installApp').hidden=true;
+$('installApp').onclick=async()=>{closeMenu();if(installPrompt){const prompt=installPrompt;installPrompt=null;await prompt.prompt();await prompt.userChoice;}else{$('installInstructions').textContent=/iPhone|iPad|iPod/.test(navigator.userAgent)?'من Safari اضغط زر المشاركة، ثم «إضافة إلى الشاشة الرئيسية».':'من قائمة المتصفح ⋮ اختار «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية». إذا الرابط مفتوح داخل تطبيق ثاني، افتحه أولًا بمتصفح Chrome.';$('installHelp').showModal();}};
+$('closeInstallHelp').onclick=()=>$('installHelp').close();
+if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});});
+
 const provinces=['بغداد','البصرة','نينوى','أربيل','السليمانية','دهوك','حلبجة','كركوك','ديالى','الأنبار','صلاح الدين','بابل','كربلاء','النجف','واسط','القادسية','ذي قار','ميسان','المثنى'];
 $('province').append(...provinces.map(p=>new Option(p,p)));
 const registrationIds=['personalName','shopName','shopPhone','province','area','street'];
@@ -21,6 +38,7 @@ async function recoveryMessages(){if(!recoverySession)return;const r=await phone
 let recoveryMessageId=null;$('recoveryBody').oninput=()=>recoveryMessageId=null;$('recoveryForm').onsubmit=e=>{e.preventDefault();run(async()=>{recoveryMessageId??=crypto.randomUUID();const r=await phoneAuth({op:'recovery_send',...recoverySession,message_id:recoveryMessageId,body:$('recoveryBody').value});renderMessages(r.messages||[],$('recoveryMessages'));$('recoveryBody').value='';recoveryMessageId=null;});};
 $('refresh').onclick=()=>run(refresh);
 async function showPage(name){
+ closeMenu();
  if(!me&&!['about','qr'].includes(name)){
   page='activate';$('workspace').hidden=true;$('login').hidden=false;$('authBack').hidden=true;$('title').textContent='دخول حساب الصيرفة';
   if(name==='support'){$('recovery').hidden=false;notice('للاستفسار عن حسابك، افتح محادثة الدعم من الأسفل.');}else notice('سجّل الدخول حتى تفتح التفعيل والمعاملات الخاصة بصيرفتك.');
