@@ -1,4 +1,4 @@
-import {openSectionScreen,closeSectionScreen} from './screen-navigation.js?v=1';
+import {openSectionScreen,closeSectionScreen} from './screen-navigation.js?v=2';
 export function createCouponRewards({document,rpc,money,dates,canEdit,notify,run,openDetail,openProfile,onModeChange=()=>{},onGenerateCards,onLoadCards=async()=>{}}) {
  const $=id=>document.getElementById(id);
  let rows=[],epoch=0,saving=false,editingCode=null;
@@ -29,5 +29,5 @@ export function createCouponRewards({document,rpc,money,dates,canEdit,notify,run
  $('newRewardPage').onclick=()=>{if(!canEdit())return;reset();openSectionScreen($('rewardEditor'),'إنشاء كود أو كارتات');};
  $('rewardType').onchange=mode;$('newReward').onclick=reset;$('rewardSearch').oninput=render;$('refreshRewards').onclick=()=>run(load);
  $('rewardForm').onsubmit=e=>{e.preventDefault();if(saving||!canEdit())return;run(async()=>{saving=true;syncPermissions();try{if($('rewardType').value==='free_ride'&&editingCode===null&&onGenerateCards){await onGenerateCards();await load();return;}await rpc('save',{code:$('rewardCode').value.trim().toUpperCase(),reward_type:$('rewardType').value,amount:$('rewardType').value==='free_ride'?100000:Number($('rewardAmount').value.replace(/[,٬\s]/g,'')),expires_at:new Date($('rewardExpiry').value).toISOString(),max_uses:Number($('rewardUses').value.replace(/[,٬\s]/g,'')),active:$('rewardActive').checked});await load();reset();closeSectionScreen($('rewardEditor'));notify('تم حفظ الكود وتفعيله بالتطبيق');}finally{saving=false;syncPermissions();}});};
- reset();return {load,syncPermissions,reset};
+ reset();return {load,syncPermissions,reset,getState(){return editingCode?{code:editingCode}:null;},restore(state){const c=rows.find(c=>c.code===state.code);if(!c)return;editingCode=c.code;$('rewardCode').value=c.code;$('rewardCode').readOnly=true;$('rewardType').value=c.reward_type||'amount';$('rewardAmount').value=c.amount;$('rewardExpiry').value=local(c.expires_at);$('rewardUses').value=c.max_uses;$('rewardActive').checked=c.active;mode();}};
 }
