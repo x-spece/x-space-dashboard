@@ -682,10 +682,10 @@ const detailActions={notifications:showNotificationInbox,exchangeMetric:kind=>ex
 function captureDashboard(){
  const filters={};for(const el of document.querySelectorAll('input[type="search"],select[id]'))if(el.id&&!el.closest('form')&&!el.id.includes('Password'))filters[el.id]=el.value;
  const sectionScreens=getSectionScreens();
- return {page:activePage,scroll:window.scrollY,scrolls:{detailDialog:$('detailDialog').scrollTop,...Object.fromEntries(sectionScreens.map(s=>[s.id,s.scroll]))},sections:sectionScreens,detail:detailAction,exchange:exchangesPage.getState(),inventoryCategory,staffUser:editingStaff?.user_id||null,reward:couponRewards.getState?.(),filters};
+ return {operations:operations.getState(),page:activePage,scroll:window.scrollY,scrolls:{detailDialog:$('detailDialog').scrollTop,...Object.fromEntries(sectionScreens.map(s=>[s.id,s.scroll]))},sections:sectionScreens,detail:detailAction,exchange:exchangesPage.getState(),inventoryCategory,staffUser:editingStaff?.user_id||null,reward:couponRewards.getState?.(),filters};
 }
 async function restoreDashboard(state){
- closeDetail();closeAllSectionScreens();const page=canView(state.page)?state.page:permissionPages.find(([key])=>canView(key))?.[0];if(!page)return;showPage(page);inventoryCategory=state.inventoryCategory||inventoryCategory;for(const [id,value]of Object.entries(state.filters||{})){const el=$(id);if(el)el.value=value;}await loadPage(page);
+ operations.restore(state.operations);closeDetail();closeAllSectionScreens();const page=canView(state.page)?state.page:permissionPages.find(([key])=>canView(key))?.[0];if(!page)return;showPage(page);inventoryCategory=state.inventoryCategory||inventoryCategory;for(const [id,value]of Object.entries(state.filters||{})){const el=$(id);if(el)el.value=value;}await loadPage(page);
  for(const [id,value]of Object.entries(state.filters||{})){const el=$(id);if(el)el.value=value;}if(page==='inventory')await loadInventoryRows();else if(page==='users')renderUsers();else if(page==='rides')renderRides();else if(page==='finance')renderWallets();else if(page==='staff')renderStaff();else if(page==='lines')renderLines();else if(page==='support')renderSupport();else if(page==='exchanges')await exchangesPage.load();
  if(state.exchange?.id&&page==='exchanges')await exchangesPage.restore(state.exchange);
  if(state.staffUser&&page==='staff'){const user=staffRows.find(s=>s.user_id===state.staffUser);if(user)editStaff(user);}
