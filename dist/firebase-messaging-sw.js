@@ -1,3 +1,4 @@
+const originalShowNotification=self.registration.showNotification.bind(self.registration);self.registration.showNotification=(title,options={})=>originalShowNotification(title,{...options,silent:false,vibrate:[180,80,180],...(options.tag?{renotify:true}:{})});
 /* Firebase config must belong to the same project as the server sender. */
 importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js');

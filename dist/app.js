@@ -1,3 +1,4 @@
+import {playNoticeSound} from './notification-sound.js?v=1';
 import {setupKeyboardShortcuts} from './keyboard-shortcuts.js?v=1';
 import {createAppNavigation,requestAppBack,navigationChanged} from './app-navigation.js?v=1';
 import {openSectionScreen,closeSectionScreen,closeAllSectionScreens,getSectionScreens} from './screen-navigation.js?v=2';
@@ -296,11 +297,12 @@ function rememberPush(value){try{if(value)localStorage.setItem(pushStorageKey,JS
 function pushState(label,error=''){$('enableNotifications').textContent=label;$('enableNotifications').title=error;}
 function validNotice(n){return n.kind!=='offer_end'&&(!n.expires_at||Date.parse(n.expires_at)>Date.now());}
 async function showDeviceNotice(n){
+ if(notificationUser&&n.user_id===notificationUser&&validNotice(n)&&!notified.has(n.id))playNoticeSound(n.id);
  if(!notificationUser||n.user_id!==notificationUser||!validNotice(n)||notified.has(n.id)||globalThis.Notification?.permission!=='granted')return;
  const epoch=notificationEpoch;notified.add(n.id);
  try{const registration=webRegistration||await navigator.serviceWorker?.getRegistration(new URL('./',location.href).href);
   if(epoch!==notificationEpoch)return;
-  const options={body:englishDigits(n.body),tag:n.id,icon:new URL('./assets/logo.png',location.href).href,data:{notification_id:n.id,recipient_id:n.user_id,target:n.target||{}}};
+  const options={body:englishDigits(n.body),tag:n.id,silent:false,renotify:true,vibrate:[180,80,180],icon:new URL('./assets/logo.png',location.href).href,data:{notification_id:n.id,recipient_id:n.user_id,target:n.target||{}}};
   if(registration)await registration.showNotification(englishDigits(n.title),options);
   else{const popup=new Notification(englishDigits(n.title),options);popup.onclick=()=>{window.focus();run(()=>openNotification(n));popup.close();};}
  }catch(_){notified.delete(n.id);}
