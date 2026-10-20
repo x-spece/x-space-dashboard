@@ -1,3 +1,4 @@
+import {setupKeyboardShortcuts} from '../keyboard-shortcuts.js?v=1';
 import {createAppNavigation,requestAppBack,navigationChanged} from '../app-navigation.js?v=1';
 import {createWebNotifications} from '../web-notifications.js?v=1';
 import {openSectionScreen,closeSectionScreen,closeAllSectionScreens,getSectionScreens} from '../screen-navigation.js?v=2';
@@ -116,5 +117,6 @@ async function startPortalNavigation(){if(portalNavigation||!me)return;portalNav
  }
 }
 
+setupKeyboardShortcuts({document,window,menu:$('menuToggle'),notifications:$('agentNotifications'),help:$('agentKeyboardHelp'),notify:notice});
 run(async()=>{try{recoverySession=JSON.parse(sessionStorage.getItem('tkt-exchange-recovery'));}catch{}if(recoverySession){$('recovery').hidden=false;$('recoveryChat').hidden=false;await recoveryMessages().catch(()=>{});}const{data}=await db.auth.getSession();if(data.session)await loadAccount();else if(token)await refresh();});
 setInterval(()=>{if(recoverySession&&!$('recovery').hidden&&!document.hidden&&!document.body.dataset.busy)recoveryMessages().catch(()=>{});},3000);
