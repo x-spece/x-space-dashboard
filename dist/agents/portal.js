@@ -1,6 +1,6 @@
 import {setupKeyboardShortcuts} from '../keyboard-shortcuts.js?v=1';
-import {createAppNavigation,requestAppBack,navigationChanged} from '../app-navigation.js?v=1';
-import {createWebNotifications} from '../web-notifications.js?v=2';
+import {createAppNavigation,requestAppBack,navigationChanged} from '../app-navigation.js?v=2';
+import {createWebNotifications} from '../web-notifications.js?v=3';
 import {openSectionScreen,closeSectionScreen,closeAllSectionScreens,getSectionScreens} from '../screen-navigation.js?v=2';
 import {normalizeIraqiPhone} from './phone.js?v=4';
 import{$,db,rpc,run,notice,money,date,phone,el,renderTransactions,renderMessages}from'./client.js?v=8';
