@@ -6,10 +6,11 @@ alter table tkt_private.portal_members enable row level security;
 alter table tkt_private.portal_settings enable row level security;
 alter table tkt_private.password_links enable row level security;
 revoke all on tkt_private.portal_members,tkt_private.portal_settings,tkt_private.password_links from public,anon,authenticated;
+alter table tkt_private.portal_settings add column if not exists ios_url text not null default '', add column if not exists ios_available boolean not null default false;
 create or replace function tkt_private.captain_portal(p_action text,p_data jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
-declare u uuid:=auth.uid();s tkt_private.portal_settings;r record;n integer:=0;batch uuid;url text:=btrim(coalesce(p_data->>'android_url',''));a public.tkt_captain_applications;
+declare u uuid:=auth.uid();s tkt_private.portal_settings;r record;n integer:=0;batch uuid;url text:=btrim(coalesce(p_data->>'android_url',''));ios_link text:=btrim(coalesce(p_data->>'ios_url',''));
 begin
- if p_action='settings' then select * into s from tkt_private.portal_settings where id;return jsonb_build_object('available',s.available,'android_url',case when s.available then s.android_url else '' end);end if;
+ if p_action='settings' then select * into s from tkt_private.portal_settings where id;return jsonb_build_object('available',s.available,'android_available',s.available,'android_url',case when s.available then s.android_url else '' end,'ios_available',s.ios_available,'ios_url',case when s.ios_available then s.ios_url else '' end);end if;
  if u is null then raise exception 'AUTH_REQUIRED';end if;
  if not exists(select 1 from public.tkt_profiles where user_id=u and not blocked) then raise exception 'ACCOUNT_BLOCKED';end if;
  if p_action='join' then
@@ -22,15 +23,18 @@ begin
   perform tkt_private.require_dashboard('applications',true);
   if url<>'' and (url!~'^https://[^[:space:]]+$' or length(url)>2048)then raise exception 'INVALID_URL';end if;
   if coalesce((p_data->>'available')::boolean,false) and url=''then raise exception 'INVALID_URL';end if;
-  update tkt_private.portal_settings set android_url=url,available=coalesce((p_data->>'available')::boolean,false)where id;
+  if p_data ? 'ios_url' and ios_link<>'' and (ios_link!~'^https://[^[:space:]]+$' or length(ios_link)>2048)then raise exception 'INVALID_URL';end if;
+  select * into s from tkt_private.portal_settings where id for update;
+  if coalesce((p_data->>'ios_available')::boolean,s.ios_available) and coalesce(p_data->>'ios_url',s.ios_url)=''then raise exception 'INVALID_URL';end if;
+  update tkt_private.portal_settings set android_url=url,available=coalesce((p_data->>'available')::boolean,false),ios_url=case when p_data ? 'ios_url' then ios_link else s.ios_url end,ios_available=coalesce((p_data->>'ios_available')::boolean,s.ios_available) where id;
   insert into tkt_private.admin_audit(actor_id,action,details)values(u,'portal_settings',jsonb_build_object('available',p_data->'available'));return '{"ok":true}';
  elsif p_action='announce' then
   perform tkt_private.require_dashboard('applications',true);select * into s from tkt_private.portal_settings where id for update;
-  if not s.available or s.android_url=''then raise exception 'APP_NOT_AVAILABLE';end if;
+  if not ((s.available and s.android_url<>'') or (s.ios_available and s.ios_url<>''))then raise exception 'APP_NOT_AVAILABLE';end if;
   if s.announcement_id is not null then raise exception 'ANNOUNCEMENT_SENT';end if;
   batch:=gen_random_uuid();
   for r in select m.user_id from tkt_private.portal_members m join public.tkt_profiles p using(user_id)where not p.blocked loop
-   perform tkt_private.notification_add(r.user_id,'portal-launch:'||batch::text,'announcement','تكتوكة صار متوفر على أندرويد','حمّل التطبيق وادخل بنفس رقمك وكلمة السر اللي سجلت بيها.',jsonb_build_object('url','https://x-spece.github.io/x-space-dashboard/captains/'));n:=n+1;
+   perform tkt_private.notification_add(r.user_id,'portal-launch:'||batch::text,'announcement','تكتوكة صار متوفر على '||case when s.available and s.ios_available then 'أندرويد وiOS' when s.ios_available then 'iOS' else 'أندرويد' end,'حمّل التطبيق وادخل بنفس رقمك وكلمة السر اللي سجلت بيها.',jsonb_build_object('url','https://x-spece.github.io/x-space-dashboard/captains/'));n:=n+1;
   end loop;
   update tkt_private.portal_settings set announcement_id=batch where id;
   insert into tkt_private.admin_audit(actor_id,action,details)values(u,'portal_announcement',jsonb_build_object('recipients',n));return jsonb_build_object('queued',n);
