@@ -622,8 +622,42 @@ const linePayNames={not_due:'الدفع بنهاية مدة الخط',due:'مس�
 const lineTrackMarkers=new Map();
 const lineWeek=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 async function linesRpc(action,data={}){return dashboardRpc('tkt_lines',action,data);}
-const lineAlarm=createEmergencyAlarm({fetchCases:async()=>{const rows=await linesRpc('list');return rows.filter(l=>l.status==='accepted').map(l=>({id:l.id,status:l.unresolved_late>0?'open':'resolved'}));},createAudioContext:typeof(window.AudioContext||window.webkitAudioContext)==='function'?()=>new(window.AudioContext||window.webkitAudioContext)():undefined,onState:s=>{const el=$('lineAlarm');if(!el)return;el.hidden=!s.active;el.textContent=(s.openCount?'⚠ تأخر '+s.openCount+' خط · ':'')+(s.enabled?'صوت تحذير الخطوط فعال':'تفعيل صوت تحذير الخطوط');el.classList.toggle('emergency-notification',s.openCount>0);el.title=s.error||'';}});
-$('lineAlarm').onclick=()=>lineAlarm.arm();
+let lateLineRows=[];
+async function lineAlertsRpc(action,data={}){return dashboardRpc('tkt_line_alerts',action,data);}
+const lineAlarm=createEmergencyAlarm({fetchCases:async()=>{const rows=await lineAlertsRpc('list');lateLineRows=rows;if(dialogMode==='late-lines')renderLateLines();return rows.map(l=>({id:l.id,status:'open'}));},createAudioContext:typeof(window.AudioContext||window.webkitAudioContext)==='function'?()=>new(window.AudioContext||window.webkitAudioContext)():undefined,onState:s=>{const el=$('lineAlarm');if(!el)return;el.hidden=!s.active;el.textContent=(s.openCount?'⚠ '+s.openCount+' تنبيه تأخير · فتح المتأخرين':'الخطوط المتأخرة')+' · '+(s.enabled?'الصوت مفعّل':'تفعيل الصوت');el.classList.toggle('emergency-notification',s.openCount>0);el.title=s.error||'فتح الخطوط المتأخرة ومعالجة التنبيهات';}});
+$('lineAlarm').onclick=()=>{void lineAlarm.arm();return run(openLateLines);};
+function renderLateLines(){
+ const list=$('lateLineList');if(!list||dialogMode!=='late-lines')return;
+ if(!renderCache.changed('late-lines:'+dialogEpoch,lateLineRows))return;
+ list.replaceChildren();
+ for(const l of lateLineRows){
+  const controls=[button('تفاصيل الخط والتتبع',()=>trackLine(l.line_id))];
+  if(canEdit('lines'))controls.push(button('تم التعامل',()=>resolveLateLine(l)));
+  list.append(record(l.passenger_name||'خط متأخر',[
+   ['نوع التأخير',l.stage==='arrival'?'تأخر الوصول':'تأخر استلام الركاب'],['موعد المشوار',dates(l.due_at)],
+   ['الكابتن',l.captain_name||'—'],['هاتف الكابتن',localPhone(l.captain_phone)],
+   ['الزبون',l.customer_name||'—'],['هاتف الزبون',localPhone(l.customer_phone)],
+   ['الانطلاق',l.pickup_name],['الوجهة',l.destination_name],['حالة المشوار',lineRunNames[l.state]]
+  ],controls));
+ }
+ if(!lateLineRows.length)list.append(text('p','ماكو خطوط متأخرة تحتاج معالجة حاليًا. توقف صوت التحذير.'));
+}
+async function openLateLines(){
+ if(!canView('lines'))throw Error('PERMISSION_DENIED');
+ const body=openDetail('الخطوط المتأخرة',{name:'lateLines',args:[]});dialogMode='late-lines';
+ body.append(text('p','افتح تفاصيل الخط للمتابعة، واضغط «تم التعامل» بعد معالجة الحالة. يبقى الصوت للحالات الأخرى غير المعالجة.'));
+ body.append(button('تحديث المتأخرين',()=>lineAlarm.refresh()));
+ body.append(Object.assign(text('div',''),{id:'lateLineList'}));
+ renderLateLines();await lineAlarm.refresh();
+}
+async function resolveLateLine(l){
+ if(!canEdit('lines'))throw Error('PERMISSION_DENIED');
+ await lineAlertsRpc('resolve',{run_id:l.run_id,stage:l.stage});
+ lateLineRows=lateLineRows.filter(row=>row.id!==l.id);
+ lineAlarm.resolved(l.id);renderLateLines();
+ status('تم التعامل مع تنبيه الخط؛ يبقى الإنذار للحالات غير المعالجة.');
+ await lineAlarm.refresh();
+}
 async function loadLines(){const token=requestTracker.next('lines'),rows=await linesRpc('list');if(!requestTracker.current(token))return;lineRows=rows;renderLines();}
 function lineFacts(l){const weekly=l.weekly_schedule||{};const shiftFacts=[];for(const [key,title]of [['morning','الدوام الصباحي'],['afternoon','الدوام الظهري']]){const days=Object.entries(weekly).filter(([,value])=>value.shift===key).sort((a,b)=>Number(a[0])-Number(b[0]));if(days.length){const time=days[0][1];shiftFacts.push([title,days.map(([day])=>lineWeek[Number(day)]).join('، ')],[title+' — الانطلاق',displayClock(time.departure)],[title+' — الوصول',displayClock(time.arrival)],[title+' — الرجوع',displayClock(time.return_home)]);}}return [...shiftFacts,['الزبون',l.customer_name||l.customer?.name||'—'],['اسم الراكب',l.passenger_name],['الانطلاق',l.pickup_name],['الوصول',l.destination_name],['عدد أيام الخدمة',l.service_days],['بداية الخط',l.start_date],['آخر يوم خدمة',l.end_date],['الأيام المستبعدة',(l.excluded_days||[]).map(d=>lineWeek[d]).join('، ')||'بدون استبعاد'],['الانطلاق',displayClock(l.departure)],['وقت الوصول',displayClock(l.arrival)],['وقت الرجوع للمنزل',l.return_home?displayClock(l.return_home):'غير محدد'],['أجور كل مدة الخط',money(l.total_price)],['الحالة',lineStateNames[l.status]],['الدفع',linePayNames[l.payment_status]],['تاريخ استلام الأجور',dates(l.paid_at)],['أيام أُنجزت',l.completed_days??'—'],['أيام لم تُنفّذ',l.missed_days??'—'],['أيام متبقية',l.remaining_days??'—'],['الكابتن',l.captain_name||'بانتظار القبول'],['تحذيرات التأخير',l.late_count||0]];}
 function renderLines(){if(!renderCache.changed('lines',[lineRows,$('lineSearch').value,$('lineStatus').value]))return;const list=$('lineList'),search=$('lineSearch').value.trim(),filter=$('lineStatus').value;list.replaceChildren();for(const l of lineRows.filter(l=>(!filter||l.status===filter)&&(!search||`${l.customer_name} ${l.passenger_name} ${l.captain_name} ${l.pickup_name} ${l.destination_name}`.includes(search)))){const card=record(lineKindNames[l.kind],lineFacts(l),[button('التفاصيل والتتبع',()=>trackLine(l.id))]);if(l.unresolved_late>0)card.prepend(text('p','⚠ إنذار: الكابتن لم يستلم الركاب بعد موعد الخط بـ5 دقائق'));list.append(card);}empty(list);}
@@ -665,7 +699,7 @@ $('newStaffPage').onclick=()=>{clearStaffForm();openSectionScreen($('staffEditor
 
 let logoutConfirmAt=0;const logoutAction=$('logout').onclick;$('logout').onclick=()=>{if(Date.now()-logoutConfirmAt<2200)return logoutAction();logoutConfirmAt=Date.now();status('اضغط تسجيل الخروج مرة ثانية لتأكيد الخروج');};
 
-const detailActions={notifications:showNotificationInbox,exchangeMetric:kind=>exchangesPage.openMetric(kind),couponHistory:code=>couponRewards.openHistory(code)};
+const detailActions={lateLines:openLateLines,notifications:showNotificationInbox,exchangeMetric:kind=>exchangesPage.openMetric(kind),couponHistory:code=>couponRewards.openHistory(code)};
 {const original=openUserProfile;openUserProfile=async(...args)=>{appNavigation?.save();const result=await original(...args);detailAction={name:'openUserProfile',args};appNavigation?.commit();return result;};detailActions['openUserProfile']=openUserProfile;}
 {const original=trackRide;trackRide=async(...args)=>{appNavigation?.save();const result=await original(...args);detailAction={name:'trackRide',args};appNavigation?.commit();return result;};detailActions['trackRide']=trackRide;}
 {const original=trackLine;trackLine=async(...args)=>{appNavigation?.save();const result=await original(...args);detailAction={name:'trackLine',args};appNavigation?.commit();return result;};detailActions['trackLine']=trackLine;}
