@@ -15,7 +15,7 @@ export function setupPhoneActions(document){
  function enhance(root){
   if(!root||root.nodeType!==1||root.closest(blocked))return;
   const conversations=[...(root.matches('.support-conversation')?[root]:[]),...root.querySelectorAll('.support-conversation')];
-  for(const row of conversations){const open=row.querySelector('.conversation-open');if(!open)continue;const found=findPhoneNumbers(open.textContent)[0];if(found&&!row.querySelector('a.whatsapp-link'))row.append(link(found.phone));}
+  for(const row of conversations){const open=row.querySelector('.conversation-open');if(!open)continue;const found=[...open.querySelectorAll('strong,span,small')].flatMap(node=>findPhoneNumbers(node.textContent))[0];if(found&&!row.querySelector('a.whatsapp-link'))row.append(link(found.phone));}
   const walker=document.createTreeWalker(root,4),nodes=[];let node;
   while((node=walker.nextNode()))if(node.parentElement&&!node.parentElement.closest(blocked)&&findPhoneNumbers(node.nodeValue).length)nodes.push(node);
   for(const node of nodes){

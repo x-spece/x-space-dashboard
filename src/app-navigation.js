@@ -1,4 +1,4 @@
-export function createAppNavigation({key,capture,restore,notify}){
+export function createAppNavigation({key,capture,restore,notify,onRestoring=()=>{}}){
  let restoring=false,ready=false,exitAt=0,timer,depth=0,backPending=false,backInFlight=false,pendingPop=null,restoreQueue=Promise.resolve();
  const read=()=>{try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch{return null}};
  const write=state=>{try{sessionStorage.setItem(key,JSON.stringify(state));}catch{}};
@@ -17,9 +17,9 @@ export function createAppNavigation({key,capture,restore,notify}){
  function begin(){if(!depth)save();depth++;}
  function end(){if(depth)depth--;if(!depth){if(pendingPop){const event=pendingPop;pendingPop=null;pop(event);return;}commit();if(backPending){backPending=false;back();}}}
  async function apply(state){
-  restoring=true;try{await restore(state);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));window.scrollTo({top:state.scroll||0,behavior:'instant'});for(const[id,top]of Object.entries(state.scrolls||{})){const el=document.getElementById(id);if(el)(el.closest?.('dialog.section-screen')||el).scrollTop=top;}if(state.focus){const el=document.getElementById(state.focus);if(el&&!el.closest('[hidden]'))el.focus({preventScroll:true});}}
+  restoring=true;onRestoring(true);try{await restore(state);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));window.scrollTo({top:state.scroll||0,behavior:'instant'});for(const[id,top]of Object.entries(state.scrolls||{})){const el=document.getElementById(id);if(el)(el.closest?.('dialog.section-screen')||el).scrollTop=top;}if(state.focus){const el=document.getElementById(state.focus);if(el&&!el.closest('[hidden]'))el.focus({preventScroll:true});}}
   catch(e){notify('تعذّر استرجاع بعض التفاصيل؛ تم عرض آخر بيانات متاحة.');}
-  finally{restoring=false;backInFlight=false;commit(true);}
+  finally{restoring=false;backInFlight=false;onRestoring(false);commit(true);}
  }
  function back(){if(!ready||restoring||backInFlight)return;if(depth){backPending=true;return;}save();backInFlight=true;history.back();}
  function pop(event){

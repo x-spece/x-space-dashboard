@@ -1,9 +1,9 @@
-import {setupPhoneActions,normalizeWhatsAppPhone,whatsappUrl} from './phone-actions.js?v=1.6.90';
+import {setupPhoneActions,normalizeWhatsAppPhone,whatsappUrl} from './phone-actions.js?v=1.6.91';
 import {createGlobalSearch} from './global-search.js?v=1';
 import {createOperations} from './operations.js?v=1.6.90';
 import {playNoticeSound} from './notification-sound.js?v=1';
 import {setupKeyboardShortcuts} from './keyboard-shortcuts.js?v=1';
-import {createAppNavigation,requestAppBack,navigationChanged,navigationWillChange} from './app-navigation.js?v=3';
+import {createAppNavigation,requestAppBack,navigationChanged,navigationWillChange} from './app-navigation.js?v=4';
 import {openSectionScreen,closeSectionScreen,closeAllSectionScreens,getSectionScreens} from './screen-navigation.js?v=3';
 import {normalizeIraqiPhone} from './agents/phone.js?v=4';
 import {createExchangesPage} from './exchanges.js?v=1.6.88';
@@ -732,7 +732,7 @@ async function restoreDashboard(state){
  if(state.detail&&detailActions[state.detail.name])await detailActions[state.detail.name](...(state.detail.args||[]));
  setMenu(false,false);
 }
-async function startDashboardNavigation(){if(appNavigation)return;const user=(await db.auth.getUser()).data.user;if(!user)return;appNavigation=createAppNavigation({key:'tkt-admin-navigation:'+user.id,capture:captureDashboard,restore:restoreDashboard,notify:status});await appNavigation.start();}
+async function startDashboardNavigation(){if(appNavigation)return;const user=(await db.auth.getUser()).data.user;if(!user)return;appNavigation=createAppNavigation({key:'tkt-admin-navigation:'+user.id,capture:captureDashboard,restore:restoreDashboard,notify:status,onRestoring:value=>{$('navigationLoading').hidden=!value;document.body.classList.toggle('navigation-restoring',value);}});await appNavigation.start();}
 
 const operations=createOperations({document,rpc:(a,d)=>dashboardRpc('tkt_operations',a,d),exchangeRpc:(a,d)=>dashboardRpc('tkt_exchange',a,d),openDetail,button,text,money,dates,canView,canEdit,notify:status,run,openUser:openUserProfile,openRide:trackRide,openLine:trackLine,openApplication:async id=>{const data=await applicationRpc('list',{status:'pending',limit:500});const row=data.find(a=>a.user_id===id);if(!row)throw Error('الطلب غير متاح');await applicationDetail(row);},openExchange:async id=>{showPage('exchanges');await exchangesPage.restore({id});},openChat:chat,loadSupport,getRooms:()=>[...supportRooms.map(r=>({...r,kind:'support'})),...recovery.map(r=>({...r,kind:'recovery'})),...exchangeRooms.map(r=>({...r,kind:'exchange'}))],getUser:()=>notificationUser,renderSupport:()=>{renderCache.clear();renderSupport();}});
 for(const name of ['center','renewals','statement','demand','watch','audit','editWorkflow'])detailActions['operations:'+name]=(...args)=>operations[name](...args);
