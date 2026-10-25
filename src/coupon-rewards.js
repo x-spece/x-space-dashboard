@@ -1,4 +1,4 @@
-import {openSectionScreen,closeSectionScreen} from './screen-navigation.js?v=2';
+import {openSectionScreen,closeSectionScreen} from './screen-navigation.js?v=3';
 export function createCouponRewards({document,rpc,money,dates,canEdit,notify,run,openDetail,openProfile,onModeChange=()=>{},onGenerateCards,onLoadCards=async()=>{}}) {
  const $=id=>document.getElementById(id);
  let rows=[],epoch=0,saving=false,editingCode=null;
